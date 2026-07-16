@@ -1,0 +1,61 @@
+# ============================================
+# XcodeGen project spec for Eva Copilot
+# ============================================
+name: EVA-Copilot
+options:
+  bundleIdPrefix: com.evabridge
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    PRODUCT_BUNDLE_IDENTIFIER: com.evabridge.zeekr7x
+    MARKETING_VERSION: "2.0"
+    CURRENT_PROJECT_VERSION: "2"
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+    GCC_TREAT_WARNINGS_AS_ERRORS: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+
+targets:
+  EVA-Bridge:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: EVA-Bridge
+    info:
+      path: EVA-Bridge/Info.plist
+      properties:
+        CFBundleDisplayName: EVA Copilot
+        CFBundleIdentifier: com.evabridge.zeekr7x
+        CFBundleVersion: "2"
+        CFBundleShortVersionString: "2.0"
+        NSSpeechRecognitionUsageDescription: "Eva Copilot escucha tu voz en español para detectar la palabra clave y traducir tus comandos al chino."
+        NSMicrophoneUsageDescription: "Eva Copilot necesita el micrófono para escucharte cuando decís Hola Yoe y traducir tus comandos."
+        UIBackgroundModes:
+          - audio
+        LSRequiresIPhoneOS: true
+        UIRequiredDeviceCapabilities:
+          - arm64
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.evabridge.zeekr7x
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies: []

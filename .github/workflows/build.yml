@@ -1,0 +1,82 @@
+name: Build EVA Bridge IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 15.4
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Downgrade project format (XcodeGen 2.x → format 77, but Xcode 15 needs 56)
+        run: |
+          PBXPROJ="EVA-Bridge.xcodeproj/project.pbxproj"
+          echo "Before:"
+          grep "objectVersion" $PBXPROJ | head -1
+          sed -i.bak 's/objectVersion = [0-9]*;/objectVersion = 56;/g' $PBXPROJ
+          echo "After:"
+          grep "objectVersion" $PBXPROJ | head -1
+          rm $PBXPROJ.bak
+
+      - name: Build unsigned
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project EVA-Bridge.xcodeproj \
+            -scheme EVA-Bridge \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build/ \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log
+        continue-on-error: true
+
+      - name: Show last 80 lines of build log
+        if: always()
+        run: |
+          if [ -f build.log ]; then
+            echo "=== last 80 lines of build log ==="
+            tail -80 build.log
+          fi
+
+      - name: Find .app and package IPA
+        run: |
+          APP_PATH=$(find build -name "EVA-Bridge.app" -path "*Release-iphoneos*" 2>/dev/null | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found"
+            find build -name "*.app" 2>/dev/null
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          cd Payload
+          zip -r ../EVA-Bridge.ipa .
+          cd ..
+          ls -la EVA-Bridge.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EVA-Bridge-unsigned
+          path: EVA-Bridge.ipa
+          if-no-files-found: error
+          retention-days: 30
