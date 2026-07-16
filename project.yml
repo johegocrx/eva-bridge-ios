@@ -41,8 +41,8 @@ targets:
         CFBundleIdentifier: com.evabridge.zeekr7x
         CFBundleVersion: "2"
         CFBundleShortVersionString: "2.0"
-        NSSpeechRecognitionUsageDescription: "Eva Copilot escucha tu voz en espaÃ±ol para detectar la palabra clave y traducir tus comandos al chino."
-        NSMicrophoneUsageDescription: "Eva Copilot necesita el micrÃ³fono para escucharte cuando decÃ­s Hola Yoe y traducir tus comandos."
+        NSSpeechRecognitionUsageDescription: "Eva Copilot escucha tu voz en español para detectar la palabra clave y traducir tus comandos al chino."
+        NSMicrophoneUsageDescription: "Eva Copilot necesita el micrófono para escucharte cuando decís Hola Yoe y traducir tus comandos."
         UIBackgroundModes:
           - audio
         LSRequiresIPhoneOS: true
