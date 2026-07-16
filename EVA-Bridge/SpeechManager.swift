@@ -81,7 +81,10 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
+            // .voiceChat permite grabar Y reproducir, evitando que el TTS
+            // quede silenciado cuando el recognizer está activo.
+            try session.setCategory(.playAndRecord, mode: .voiceChat,
+                                    options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
             try session.setActive(true, options: [])
         } catch {
             self.error = "Error audio session: \(error.localizedDescription)"

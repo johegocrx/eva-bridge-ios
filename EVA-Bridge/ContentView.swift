@@ -28,8 +28,11 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             header
+            if !tts.hasChineseVoice {
+                chineseVoiceWarning
+            }
             statusLabel
             voiceIndicator
             inputRow
@@ -67,12 +70,33 @@ struct ContentView: View {
         }
     }
 
+    private var chineseVoiceWarning: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("⚠️")
+                .font(.caption)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Voz china no instalada")
+                    .font(.caption2.bold())
+                    .foregroundColor(.yellow)
+                Text("Ajustes → Accesibilidad → Contenido hablado → Voces → Chino (mandarín)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.yellow.opacity(0.1))
+        .cornerRadius(8)
+    }
+
     private var statusLabel: some View {
         Text(voiceStateText)
             .font(.caption)
             .foregroundColor(voiceStateColor)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: 16)
+            .frame(minHeight: 14)
     }
 
     private var voiceStateText: String {
@@ -110,15 +134,15 @@ struct ContentView: View {
             }
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: 14)
                     .fill(stateGradient)
-                    .frame(height: 100)
-                HStack(spacing: 14) {
+                    .frame(height: 64)
+                HStack(spacing: 10) {
                     Text(stateEmoji)
-                        .font(.system(size: 48))
-                    VStack(alignment: .leading, spacing: 2) {
+                        .font(.system(size: 32))
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(stateLabel)
-                            .font(.subheadline.bold())
+                            .font(.caption.bold())
                             .foregroundColor(.white)
                         if !voice.lastTranscript.isEmpty {
                             Text("\u{201C}\(voice.lastTranscript)\u{201D}")
@@ -129,7 +153,7 @@ struct ContentView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 14)
             }
         }
         .buttonStyle(.plain)
@@ -204,7 +228,6 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 4) {
                 if !voice.lastMatches.isEmpty {
-                    // Mostrar los matches del último comando
                     Text("Coincidencias (\(voice.lastMatches.count))")
                         .font(.caption2)
                         .foregroundColor(.gray)
@@ -266,7 +289,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"adiós\" para detener · v2.2")
+        Text("Decí \"adiós\" para detener · v2.3")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }

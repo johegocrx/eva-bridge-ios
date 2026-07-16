@@ -16,6 +16,8 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
     @Published var status: String = ""
     @Published var lastError: String?
     @Published var voiceName: String = "—"
+    /// True si hay una voz china instalada
+    @Published var hasChineseVoice: Bool = false
 
     private let synthesizer = AVSpeechSynthesizer()
     private var zhVoice: AVSpeechSynthesisVoice?
@@ -25,17 +27,31 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
         super.init()
         synthesizer.delegate = self
         self.zhVoice = pickBestChineseVoice()
-        self.voiceName = self.zhVoice?.name ?? "No disponible"
+        self.voiceName = self.zhVoice?.name ?? "No instalada"
+        self.hasChineseVoice = (self.zhVoice != nil)
         if self.zhVoice == nil {
-            self.lastError = "No hay voz china instalada. Ajustes → Accesibilidad → Voz en voz alta → Chino."
+            self.lastError = "Voz china no instalada. Ajustes → Accesibilidad → Contenido hablado → Voces → Chino (mandarín)."
+        }
+        // Configurar sesión de audio para reproducción (TTS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .voicePrompt,
+                                    options: [.duckOthers, .mixWithOthers])
+            try session.setActive(true, options: [])
+        } catch {
+            // No crítico; TTS puede funcionar sin configurar sesión
         }
     }
 
     private func pickBestChineseVoice() -> AVSpeechSynthesisVoice? {
         let voices = AVSpeechSynthesisVoice.speechVoices()
+        // 1) Premium zh-CN (mejor calidad)
         if let v = voices.first(where: { $0.quality == .premium && $0.language == "zh-CN" }) { return v }
+        // 2) Enhanced zh-CN
         if let v = voices.first(where: { $0.quality == .enhanced && $0.language == "zh-CN" }) { return v }
+        // 3) Default zh-CN (Tingting)
         if let v = voices.first(where: { $0.language == "zh-CN" }) { return v }
+        // 4) Cualquier zh
         if let v = voices.first(where: { $0.language.hasPrefix("zh") }) { return v }
         return nil
     }
@@ -49,6 +65,15 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
         // Si está hablando algo, lo cancelamos
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
+        }
+        // Asegurar que la sesión de audio permite reproducción
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .voicePrompt,
+                                    options: [.duckOthers, .mixWithOthers])
+            try session.setActive(true, options: [])
+        } catch {
+            // Continuar de todas formas
         }
         isSpeaking = true
         let utter = AVSpeechUtterance(string: text)
