@@ -78,22 +78,24 @@ struct ContentView: View {
 
     private var voiceStateText: String {
         if !voice.permissionGranted {
-            return "Toca el botÃ³n del micrÃ³fono para conceder permisos"
+            return "Concedé permiso de micrófono y voz para empezar"
+        }
+        if !voice.infoMessage.isEmpty {
+            return voice.infoMessage
         }
         switch voice.state {
-        case .idle: return "Toca el micrÃ³fono para iniciar"
-        case .listeningWakeWord: return "ðŸ‘‚ Esperando \"Hola Yoe\"..."
-        case .wakeWordDetected: return "ðŸ‘‹ Â¡Hola! Decime el comando"
-        case .listeningCommand: return "ðŸŽ™ï¸ Escuchando tu comando..."
-        case .speaking: return "ðŸ”Š Hablando a EVA"
-        case .stopped: return "â¸ï¸ Detenido. Toca el micrÃ³fono para reiniciar"
+        case .idle: return "Toca el micrófono para iniciar"
+        case .listening: return "🎙️ Escuchando tu comando en español..."
+        case .translating: return "🔄 Traduciendo..."
+        case .speaking: return "🔊 Hablando a EVA en chino"
+        case .stopped: return "⏸️ Detenido"
         }
     }
 
     private var voiceStateColor: Color {
         switch voice.state {
-        case .listeningWakeWord: return .cyan
-        case .wakeWordDetected, .listeningCommand: return .yellow
+        case .listening: return .cyan
+        case .translating: return .yellow
         case .speaking: return .green
         case .stopped: return .gray
         default: return .gray
@@ -139,9 +141,9 @@ struct ContentView: View {
         switch voice.state {
         case .speaking:
             return LinearGradient(colors: [Color.green.opacity(0.4), Color.green.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        case .listeningWakeWord:
+        case .listening:
             return LinearGradient(colors: [Color.cyan.opacity(0.3), Color.cyan.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        case .wakeWordDetected, .listeningCommand:
+        case .translating:
             return LinearGradient(colors: [Color.yellow.opacity(0.4), Color.yellow.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .stopped:
             return LinearGradient(colors: [Color.gray.opacity(0.2), Color.gray.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -152,28 +154,27 @@ struct ContentView: View {
 
     private var stateEmoji: String {
         switch voice.state {
-        case .speaking: return "ðŸ”Š"
-        case .listeningWakeWord: return "ðŸ‘‚"
-        case .wakeWordDetected, .listeningCommand: return "ðŸŽ™ï¸"
-        case .stopped: return "â¸ï¸"
-        default: return "ðŸŽ™ï¸"
+        case .speaking: return "🔊"
+        case .listening: return "👂"
+        case .translating: return "🔄"
+        case .stopped: return "⏸️"
+        default: return "🎙️"
         }
     }
 
     private var stateLabel: String {
         switch voice.state {
         case .speaking: return "HABLANDO"
-        case .listeningWakeWord: return "DECI \"HOLA YOE\""
-        case .wakeWordDetected: return "Â¡TE ESCUCHO!"
-        case .listeningCommand: return "ESCUCHANDO COMANDO"
+        case .listening: return "ESCUCHANDO"
+        case .translating: return "TRADUCIENDO"
         case .stopped: return "REINICIAR"
-        default: return "TOCÃ PARA EMPEZAR"
+        default: return "TOCÁ PARA EMPEZAR"
         }
     }
 
     private var inputRow: some View {
         HStack(spacing: 8) {
-            TextField("o escribe aquÃ­...", text: $textInput)
+            TextField("o escribí un comando...", text: $textInput)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -195,7 +196,9 @@ struct ContentView: View {
         guard !q.isEmpty else { return }
         let results = matcher.search(q)
         if let best = results.first {
-            tts.speakCommand(best.command)
+            tts.speak("嗨伊娃", completion: {
+                tts.speakCommand(best.command)
+            })
         }
     }
 
@@ -205,15 +208,15 @@ struct ContentView: View {
                 if !matcher.loaded {
                     HStack {
                         ProgressView().controlSize(.small).tint(.white)
-                        Text("Cargando catÃ¡logo...")
+                        Text("Cargando catálogo...")
                             .font(.caption).foregroundColor(.gray)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 20)
                 } else if matcher.matches.isEmpty {
                     Text(voice.state == .stopped
-                         ? "DecÃ­ \"Hola Yoe\" y despuÃ©s tu comando"
+                         ? "Tocá el micrófono para empezar a escuchar"
                          : matcher.lastQuery.isEmpty
-                            ? "254 comandos listos. DecÃ­ \"Hola Yoe\" o escribÃ­ abajo."
+                            ? "254 comandos listos. Decí tu comando en español o escribí abajo."
                             : "Sin coincidencias para \"\(matcher.lastQuery)\".")
                         .font(.caption)
                         .foregroundColor(.gray)
@@ -231,7 +234,9 @@ struct ContentView: View {
 
     private func resultRow(_ m: CatalogMatch, isBest: Bool) -> some View {
         Button {
-            tts.speakCommand(m.command)
+            tts.speak("嗨伊娃", completion: {
+                tts.speakCommand(m.command)
+            })
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(m.command.es)
@@ -240,7 +245,7 @@ struct ContentView: View {
                     .font(.title3.weight(.medium))
                     .foregroundColor(isBest ? .green : .yellow)
                 if let tags = m.command.tags, !tags.isEmpty {
-                    Text(tags.joined(separator: " Â· "))
+                    Text(tags.joined(separator: " · "))
                         .font(.caption2).foregroundColor(.gray)
                 }
             }
@@ -259,7 +264,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Wake: \"Hola Yoe\" / \"Oye Yoe\" â€” v2.0")
+        Text("Escucha continua · Decí \"adiós\" para detener · v2.1")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }

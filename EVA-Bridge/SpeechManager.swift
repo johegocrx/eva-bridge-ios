@@ -2,8 +2,7 @@
 //  SpeechManager.swift
 //  Eva Copilot
 //
-//  Speech recognition con on-device, español. Diseñado para escucha cíclica
-//  (wake word detection).
+//  Speech recognition on-device en español, con auto-restart continuo.
 //
 
 import Foundation
@@ -16,18 +15,22 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
 
     @Published var isListening: Bool = false
     @Published var transcript: String = ""
-    @Published var status: String = "Toca el micrófono para hablar"
+    @Published var status: String = "Listo para escuchar"
     @Published var error: String?
     @Published var onDeviceSupported: Bool = false
 
     // Callbacks para integración con VoiceService
     var onFinalResult: ((String) -> Void)?
     var onPartialResult: ((String) -> Void)?
+    /// Se llama cuando el listener termina por su cuenta (timeout, error)
+    /// y debería ser reiniciado. NO se llama cuando se detiene manualmente.
+    var onAutoRestartNeeded: (() -> Void)?
 
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    private var manuallyStopped: Bool = true
 
     override init() {
         self.recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-MX"))
@@ -35,7 +38,7 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
         self.recognizer?.delegate = self
         self.onDeviceSupported = self.recognizer?.supportsOnDeviceRecognition ?? false
         if !self.onDeviceSupported {
-            self.status = "Reconocimiento on-device no soportado. Se usará servidor."
+            self.status = "On-device no soportado. Se usará servidor."
         }
     }
 
@@ -71,11 +74,11 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
             self.error = "Sin permiso de micrófono"
             return
         }
+        manuallyStopped = false
 
         task?.cancel()
         task = nil
 
-        // Configurar AVAudioSession
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
@@ -119,27 +122,49 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
                     let text = result.bestTranscription.formattedString
                     self.transcript = text
                     if result.isFinal {
+                        // El recognizer dio un resultado final. NO cerramos
+                        // el listener: dejamos que siga escuchando la
+                        // siguiente utterance.
                         self.onFinalResult?(text)
                     } else {
                         self.onPartialResult?(text)
                     }
                 }
                 if let error = error as NSError? {
-                    self.stopListening()
                     let msg = error.localizedDescription
-                    if msg.lowercased().contains("canceled") { return }
-                    if error.code == 203 { return } // No speech
-                    self.error = msg
-                    self.status = "Error: \(msg)"
+                    // 203 = No speech detected, 1110 = timeout. Son normales.
+                    // El recognizer terminó por sí solo.
+                    let isBenign = error.code == 203
+                        || error.code == 1110
+                        || msg.lowercased().contains("canceled")
+                    self.cleanupAudioEngine()
+                    if isBenign {
+                        // Reanudar escucha automáticamente
+                        if !self.manuallyStopped {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                                guard let self = self, !self.manuallyStopped else { return }
+                                self.onAutoRestartNeeded?()
+                            }
+                        }
+                    } else {
+                        self.error = msg
+                        self.status = "Error: \(msg)"
+                    }
                 }
             }
         }
     }
 
     func stopListening() {
-        guard isListening else { return }
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        manuallyStopped = true
+        cleanupAudioEngine()
+    }
+
+    private func cleanupAudioEngine() {
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         request?.endAudio()
         task?.cancel()
         request = nil

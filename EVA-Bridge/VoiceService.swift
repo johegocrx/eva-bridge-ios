@@ -2,17 +2,16 @@
 //  VoiceService.swift
 //  Eva Copilot
 //
-//  Servicio de escucha continua (foreground) que detecta el wake word "Yoe"
-//  y dispara el flujo de comando a EVA.
-//
+//  Servicio de escucha continua (foreground). Sin wake word en español.
 //  Flujo:
-//    1. App se abre → servicio arranca
-//    2. Cicla: listen 2-3 seg buscando "Yoe" en transcripts
-//    3. Si detecta "Yoe" → dice "嗨伊娃" → escucha comando → busca match → dice comando
-//    4. Vuelve a ciclar (escuchando "Yoe" de nuevo)
+//    1. App se abre → permisos → empieza a escuchar en silencio
+//    2. Usuario dice algo en español → recognizer transcribe
+//    3. Cuando termina la utterance (silencio) → busca match en catálogo
+//    4. Dice "嗨伊娃" + comando en chino
+//    5. Vuelve a escuchar (auto-ciclo)
 //
-//  iOS puede suspender la app en background, pero este servicio
-//  funciona mientras la app esté en foreground o el iPhone desbloqueado.
+//  iOS puede suspender la app en background. Funciona bien en foreground
+//  (ej. el iPhone apoyado en el soporte del auto, app abierta).
 //
 
 import Foundation
@@ -24,10 +23,9 @@ final class VoiceService: ObservableObject {
 
     enum State: String {
         case idle = "Toca el micrófono"
-        case listeningWakeWord = "Esperando \"Yoe\""
-        case wakeWordDetected = "¡Hola! Decime el comando"
-        case listeningCommand = "Escuchando comando"
-        case speaking = "Hablando"
+        case listening = "Escuchando..."
+        case translating = "Traduciendo..."
+        case speaking = "Hablando a EVA"
         case stopped = "Detenido"
     }
 
@@ -35,22 +33,30 @@ final class VoiceService: ObservableObject {
     @Published var lastTranscript: String = ""
     @Published var lastMatch: EvaCommand?
     @Published var permissionGranted: Bool = false
+    @Published var infoMessage: String = ""
 
     private let speech: SpeechManager
     private let tts: TTSManager
     private let matcher: CatalogMatcher
-    private var commandResultHandler: ((CatalogMatch) -> Void)?
 
     init(speech: SpeechManager, tts: TTSManager, matcher: CatalogMatcher) {
         self.speech = speech
         self.tts = tts
         self.matcher = matcher
-        // Configurar callbacks del speech manager
+        // Callbacks del speech manager
         self.speech.onPartialResult = { [weak self] text in
             self?.handlePartial(text)
         }
         self.speech.onFinalResult = { [weak self] text in
             self?.handleFinal(text)
+        }
+        // Si el recognizer termina solo (timeout / no speech), reiniciar
+        self.speech.onAutoRestartNeeded = { [weak self] in
+            guard let self = self else { return }
+            // Solo auto-reiniciar si estamos en modo listening
+            if self.state == .listening {
+                self.beginListeningCycle()
+            }
         }
     }
 
@@ -58,9 +64,8 @@ final class VoiceService: ObservableObject {
         let granted = await speech.requestPermissions()
         self.permissionGranted = granted
         if granted {
-            tts.speakWakeWord(completion: { [weak self] in
-                self?.beginWakeWordCycle()
-            })
+            // NO hablar al abrir: entrar directo en modo escucha silenciosa
+            beginListeningCycle()
         }
     }
 
@@ -68,77 +73,68 @@ final class VoiceService: ObservableObject {
         speech.stopListening()
         tts.stop()
         state = .stopped
+        infoMessage = "Detenido. Toca el micrófono para reiniciar."
     }
 
-    private func beginWakeWordCycle() {
-        state = .listeningWakeWord
+    private func beginListeningCycle() {
+        state = .listening
+        infoMessage = "Decí tu comando en español"
         lastTranscript = ""
-        lastMatch = nil
         speech.startListening()
     }
 
     private func handlePartial(_ text: String) {
+        // Solo mostrar el transcript parcial. NO procesar todavía.
         lastTranscript = text
-        // Chequear wake word en cada partial result
-        if state == .listeningWakeWord && WakeWordDetector.containsWakeWord(text) {
-            onWakeWordDetected()
-        }
     }
 
     private func handleFinal(_ text: String) {
-        lastTranscript = text
-        if state == .listeningWakeWord {
-            if WakeWordDetector.containsWakeWord(text) {
-                onWakeWordDetected()
-            } else {
-                // No fue wake word, ciclar
-                beginWakeWordCycle()
-            }
-        } else if state == .listeningCommand {
-            onCommandReceived(text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastTranscript = trimmed
+        guard !trimmed.isEmpty else {
+            // Recognizer terminó con texto vacío (ej. solo ruido/silencio)
+            // Reiniciar ciclo
+            beginListeningCycle()
+            return
         }
+        processCommand(trimmed)
     }
 
-    private func onWakeWordDetected() {
-        speech.stopListening()
-        state = .wakeWordDetected
-        // Decir la wake word china para despertar a EVA
-        tts.speakWakeWord(completion: { [weak self] in
-            // Después, escuchar el comando
-            self?.beginCommandListening()
-        })
-    }
-
-    private func beginCommandListening() {
-        state = .listeningCommand
-        lastTranscript = ""
-        speech.startListening()
-    }
-
-    private func onCommandReceived(_ text: String) {
-        let command = WakeWordDetector.extractCommand(from: text)
+    private func processCommand(_ text: String) {
+        state = .translating
         speech.stopListening()
 
         // Comandos de stop
-        if WakeWordDetector.isStopCommand(text) || WakeWordDetector.isStopCommand(command) {
+        if WakeWordDetector.isStopCommand(text) {
             tts.speak("好的")
             state = .stopped
+            infoMessage = "Decí \"adiós\" o tocá el micrófono para reiniciar."
             return
         }
 
         // Buscar en catálogo
-        let results = matcher.search(command.isEmpty ? text : command)
+        let results = matcher.search(text)
         if let best = results.first {
             lastMatch = best.command
-            tts.speakCommand(best.command)
-            commandResultHandler?(best)
+            infoMessage = "→ \(best.command.zh)"
+            state = .speaking
+            // Decir "嗨伊娃" + comando en chino
+            tts.speak("嗨伊娃", completion: { [weak self] in
+                guard let self = self else { return }
+                self.tts.speakCommand(best.command, completion: { [weak self] in
+                    // Después de hablar, volver a escuchar
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        self?.beginListeningCycle()
+                    }
+                })
+            })
         } else {
-            // No match
-            tts.speak("抱歉，我没听清")
-        }
-        // Volver a escuchar wake word después de un breve delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.beginWakeWordCycle()
+            infoMessage = "Sin coincidencia. Probá de nuevo."
+            tts.speak("抱歉，我没听清", completion: { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    self?.beginListeningCycle()
+                }
+            })
         }
     }
 }
