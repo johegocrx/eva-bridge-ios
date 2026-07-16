@@ -108,8 +108,9 @@ final class VoiceService: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
                 Task { @MainActor in
-                    guard let self = self, self.state == .listening, !self.processing else { return }
+                    guard self.state == .listening, !self.processing else { return }
                     let t = self.lastPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !t.isEmpty {
                         self.processCommand(t)
