@@ -78,15 +78,15 @@ struct ContentView: View {
 
     private var voiceStateText: String {
         if !voice.permissionGranted {
-            return "Toca el botón del micrófono para conceder permisos"
+            return "Toca el botÃ³n del micrÃ³fono para conceder permisos"
         }
         switch voice.state {
-        case .idle: return "Toca el micrófono para iniciar"
-        case .listeningWakeWord: return "👂 Esperando \"Hola Yoe\"..."
-        case .wakeWordDetected: return "👋 ¡Hola! Decime el comando"
-        case .listeningCommand: return "🎙️ Escuchando tu comando..."
-        case .speaking: return "🔊 Hablando a EVA"
-        case .stopped: return "⏸️ Detenido. Toca el micrófono para reiniciar"
+        case .idle: return "Toca el micrÃ³fono para iniciar"
+        case .listeningWakeWord: return "ðŸ‘‚ Esperando \"Hola Yoe\"..."
+        case .wakeWordDetected: return "ðŸ‘‹ Â¡Hola! Decime el comando"
+        case .listeningCommand: return "ðŸŽ™ï¸ Escuchando tu comando..."
+        case .speaking: return "ðŸ”Š Hablando a EVA"
+        case .stopped: return "â¸ï¸ Detenido. Toca el micrÃ³fono para reiniciar"
         }
     }
 
@@ -152,11 +152,11 @@ struct ContentView: View {
 
     private var stateEmoji: String {
         switch voice.state {
-        case .speaking: return "🔊"
-        case .listeningWakeWord: return "👂"
-        case .wakeWordDetected, .listeningCommand: return "🎙️"
-        case .stopped: return "⏸️"
-        default: return "🎙️"
+        case .speaking: return "ðŸ”Š"
+        case .listeningWakeWord: return "ðŸ‘‚"
+        case .wakeWordDetected, .listeningCommand: return "ðŸŽ™ï¸"
+        case .stopped: return "â¸ï¸"
+        default: return "ðŸŽ™ï¸"
         }
     }
 
@@ -164,16 +164,16 @@ struct ContentView: View {
         switch voice.state {
         case .speaking: return "HABLANDO"
         case .listeningWakeWord: return "DECI \"HOLA YOE\""
-        case .wakeWordDetected: return "¡TE ESCUCHO!"
+        case .wakeWordDetected: return "Â¡TE ESCUCHO!"
         case .listeningCommand: return "ESCUCHANDO COMANDO"
         case .stopped: return "REINICIAR"
-        default: return "TOCÁ PARA EMPEZAR"
+        default: return "TOCÃ PARA EMPEZAR"
         }
     }
 
     private var inputRow: some View {
         HStack(spacing: 8) {
-            TextField("o escribe aquí...", text: $textInput)
+            TextField("o escribe aquÃ­...", text: $textInput)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -195,7 +195,7 @@ struct ContentView: View {
         guard !q.isEmpty else { return }
         let results = matcher.search(q)
         if let best = results.first {
-            tts.speakCommand(best)
+            tts.speakCommand(best.command)
         }
     }
 
@@ -205,15 +205,15 @@ struct ContentView: View {
                 if !matcher.loaded {
                     HStack {
                         ProgressView().controlSize(.small).tint(.white)
-                        Text("Cargando catálogo...")
+                        Text("Cargando catÃ¡logo...")
                             .font(.caption).foregroundColor(.gray)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 20)
                 } else if matcher.matches.isEmpty {
                     Text(voice.state == .stopped
-                         ? "Decí \"Hola Yoe\" y después tu comando"
+                         ? "DecÃ­ \"Hola Yoe\" y despuÃ©s tu comando"
                          : matcher.lastQuery.isEmpty
-                            ? "254 comandos listos. Decí \"Hola Yoe\" o escribí abajo."
+                            ? "254 comandos listos. DecÃ­ \"Hola Yoe\" o escribÃ­ abajo."
                             : "Sin coincidencias para \"\(matcher.lastQuery)\".")
                         .font(.caption)
                         .foregroundColor(.gray)
@@ -240,7 +240,7 @@ struct ContentView: View {
                     .font(.title3.weight(.medium))
                     .foregroundColor(isBest ? .green : .yellow)
                 if let tags = m.command.tags, !tags.isEmpty {
-                    Text(tags.joined(separator: " · "))
+                    Text(tags.joined(separator: " Â· "))
                         .font(.caption2).foregroundColor(.gray)
                 }
             }
@@ -259,7 +259,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Wake: \"Hola Yoe\" / \"Oye Yoe\" — v2.0")
+        Text("Wake: \"Hola Yoe\" / \"Oye Yoe\" â€” v2.0")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
