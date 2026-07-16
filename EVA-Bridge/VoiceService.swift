@@ -5,8 +5,8 @@
 //  Servicio de escucha continua (foreground). Sin wake word en español.
 //  Flujo:
 //    1. App se abre → permisos → empieza a escuchar en silencio
-//    2. Usuario dice algo en español → recognizer transcribe
-//    3. Cuando termina la utterance (silencio) → busca match en catálogo
+//    2. Usuario dice algo en español → recognizer transcribe (partials)
+//    3. Cuando hay 1.5s de silencio (debounce) o llega final result → busca match
 //    4. Dice "嗨伊娃" + comando en chino
 //    5. Vuelve a escuchar (auto-ciclo)
 //
@@ -34,10 +34,18 @@ final class VoiceService: ObservableObject {
     @Published var lastMatch: EvaCommand?
     @Published var permissionGranted: Bool = false
     @Published var infoMessage: String = ""
+    /// Todos los matches del último comando (para mostrar en la lista)
+    @Published var lastMatches: [CatalogMatch] = []
 
     private let speech: SpeechManager
     private let tts: TTSManager
     private let matcher: CatalogMatcher
+
+    // Debounce: si el último partial no cambia por este tiempo, procesar
+    private var debounceTimer: Timer?
+    private let debounceInterval: TimeInterval = 1.5
+    private var lastPartialText: String = ""
+    private var processing: Bool = false
 
     init(speech: SpeechManager, tts: TTSManager, matcher: CatalogMatcher) {
         self.speech = speech
@@ -53,8 +61,7 @@ final class VoiceService: ObservableObject {
         // Si el recognizer termina solo (timeout / no speech), reiniciar
         self.speech.onAutoRestartNeeded = { [weak self] in
             guard let self = self else { return }
-            // Solo auto-reiniciar si estamos en modo listening
-            if self.state == .listening {
+            if self.state == .listening && !self.processing {
                 self.beginListeningCycle()
             }
         }
@@ -64,12 +71,13 @@ final class VoiceService: ObservableObject {
         let granted = await speech.requestPermissions()
         self.permissionGranted = granted
         if granted {
-            // NO hablar al abrir: entrar directo en modo escucha silenciosa
             beginListeningCycle()
         }
     }
 
     func stop() {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         speech.stopListening()
         tts.stop()
         state = .stopped
@@ -77,30 +85,62 @@ final class VoiceService: ObservableObject {
     }
 
     private func beginListeningCycle() {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        processing = false
         state = .listening
         infoMessage = "Decí tu comando en español"
         lastTranscript = ""
+        lastPartialText = ""
+        lastMatch = nil
+        // lastMatches se mantiene para que el usuario vea el último resultado
         speech.startListening()
     }
 
     private func handlePartial(_ text: String) {
-        // Solo mostrar el transcript parcial. NO procesar todavía.
+        guard state == .listening, !processing else { return }
         lastTranscript = text
+        lastPartialText = text
+
+        // Reiniciar timer de debounce. Cuando el usuario deje de hablar
+        // (1.5s sin cambios), procesamos el último texto.
+        debounceTimer?.invalidate()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self = self, self.state == .listening, !self.processing else { return }
+                    let t = self.lastPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty {
+                        self.processCommand(t)
+                    }
+                }
+            }
+        }
     }
 
     private func handleFinal(_ text: String) {
+        // El recognizer dio un final result. Procesar inmediatamente.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         lastTranscript = trimmed
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         guard !trimmed.isEmpty else {
-            // Recognizer terminó con texto vacío (ej. solo ruido/silencio)
-            // Reiniciar ciclo
-            beginListeningCycle()
+            if !processing && state == .listening {
+                beginListeningCycle()
+            }
             return
         }
-        processCommand(trimmed)
+        if !processing {
+            processCommand(trimmed)
+        }
     }
 
     private func processCommand(_ text: String) {
+        guard !processing else { return }
+        processing = true
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         state = .translating
         speech.stopListening()
 
@@ -109,6 +149,8 @@ final class VoiceService: ObservableObject {
             tts.speak("好的")
             state = .stopped
             infoMessage = "Decí \"adiós\" o tocá el micrófono para reiniciar."
+            lastMatches = []
+            processing = false
             return
         }
 
@@ -116,22 +158,22 @@ final class VoiceService: ObservableObject {
         let results = matcher.search(text)
         if let best = results.first {
             lastMatch = best.command
+            lastMatches = Array(results.prefix(5))
             infoMessage = "→ \(best.command.zh)"
             state = .speaking
-            // Decir "嗨伊娃" + comando en chino
             tts.speak("嗨伊娃", completion: { [weak self] in
                 guard let self = self else { return }
                 self.tts.speakCommand(best.command, completion: { [weak self] in
-                    // Después de hablar, volver a escuchar
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                         self?.beginListeningCycle()
                     }
                 })
             })
         } else {
             infoMessage = "Sin coincidencia. Probá de nuevo."
+            lastMatches = []
             tts.speak("抱歉，我没听清", completion: { [weak self] in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                     self?.beginListeningCycle()
                 }
             })

@@ -20,7 +20,6 @@ struct ContentView: View {
             mainContent
         }
         .task {
-            // Auto-arrancar el servicio de voz al abrir la app
             if !didStart {
                 didStart = true
                 await voice.start()
@@ -29,7 +28,7 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             header
             statusLabel
             voiceIndicator
@@ -38,7 +37,7 @@ struct ContentView: View {
             footer
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 6)
         .padding(.bottom, 8)
     }
 
@@ -73,7 +72,7 @@ struct ContentView: View {
             .font(.caption)
             .foregroundColor(voiceStateColor)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: 18)
+            .frame(minHeight: 16)
     }
 
     private var voiceStateText: String {
@@ -103,38 +102,37 @@ struct ContentView: View {
     }
 
     private var voiceIndicator: some View {
-        VStack(spacing: 8) {
-            Button {
-                if voice.state == .stopped || !voice.permissionGranted {
-                    Task { await voice.start() }
-                } else {
-                    voice.stop()
-                }
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(stateGradient)
-                        .frame(height: 180)
-                    VStack(spacing: 8) {
-                        Text(stateEmoji)
-                            .font(.system(size: 70))
-                        Text(stateLabel)
-                            .font(.caption.bold())
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                }
+        Button {
+            if voice.state == .stopped || !voice.permissionGranted {
+                Task { await voice.start() }
+            } else {
+                voice.stop()
             }
-            .buttonStyle(.plain)
-
-            // Indicador del transcript actual
-            if !voice.lastTranscript.isEmpty {
-                Text("\u{201C}\(voice.lastTranscript)\u{201D}")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(2)
-                    .padding(.horizontal, 4)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(stateGradient)
+                    .frame(height: 100)
+                HStack(spacing: 14) {
+                    Text(stateEmoji)
+                        .font(.system(size: 48))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(stateLabel)
+                            .font(.subheadline.bold())
+                            .foregroundColor(.white)
+                        if !voice.lastTranscript.isEmpty {
+                            Text("\u{201C}\(voice.lastTranscript)\u{201D}")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
             }
         }
+        .buttonStyle(.plain)
     }
 
     private var stateGradient: LinearGradient {
@@ -167,7 +165,7 @@ struct ContentView: View {
         case .speaking: return "HABLANDO"
         case .listening: return "ESCUCHANDO"
         case .translating: return "TRADUCIENDO"
-        case .stopped: return "REINICIAR"
+        case .stopped: return "TOCÁ PARA EMPEZAR"
         default: return "TOCÁ PARA EMPEZAR"
         }
     }
@@ -177,7 +175,7 @@ struct ContentView: View {
             TextField("o escribí un comando...", text: $textInput)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
                 .background(Color.gray.opacity(0.15))
                 .cornerRadius(10)
                 .submitLabel(.send)
@@ -204,32 +202,39 @@ struct ContentView: View {
 
     private var resultsList: some View {
         ScrollView {
-            VStack(spacing: 6) {
-                if !matcher.loaded {
+            VStack(spacing: 4) {
+                if !voice.lastMatches.isEmpty {
+                    // Mostrar los matches del último comando
+                    Text("Coincidencias (\(voice.lastMatches.count))")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                    ForEach(Array(voice.lastMatches.enumerated()), id: \.offset) { idx, m in
+                        resultRow(m, isBest: idx == 0)
+                    }
+                } else if !matcher.loaded {
                     HStack {
                         ProgressView().controlSize(.small).tint(.white)
                         Text("Cargando catálogo...")
                             .font(.caption).foregroundColor(.gray)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 20)
-                } else if matcher.matches.isEmpty {
+                } else {
                     Text(voice.state == .stopped
-                         ? "Tocá el micrófono para empezar a escuchar"
-                         : matcher.lastQuery.isEmpty
-                            ? "254 comandos listos. Decí tu comando en español o escribí abajo."
-                            : "Sin coincidencias para \"\(matcher.lastQuery)\".")
+                         ? "Tocá el indicador para empezar a escuchar"
+                         : voice.state == .listening
+                            ? "Esperando tu voz... 254 comandos listos."
+                            : "254 comandos listos. Decí tu comando en español o escribí abajo.")
                         .font(.caption)
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
                         .padding(.top, 20)
                         .padding(.horizontal)
-                } else {
-                    ForEach(Array(matcher.matches.enumerated()), id: \.offset) { idx, m in
-                        resultRow(m, isBest: idx == 0)
-                    }
                 }
             }
         }
+        .frame(maxHeight: .infinity)
     }
 
     private func resultRow(_ m: CatalogMatch, isBest: Bool) -> some View {
@@ -238,22 +243,19 @@ struct ContentView: View {
                 tts.speakCommand(m.command)
             })
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(m.command.es)
                     .font(.subheadline).foregroundColor(.white)
                 Text(m.command.zh)
                     .font(.title3.weight(.medium))
                     .foregroundColor(isBest ? .green : .yellow)
-                if let tags = m.command.tags, !tags.isEmpty {
-                    Text(tags.joined(separator: " · "))
-                        .font(.caption2).foregroundColor(.gray)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isBest ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+                    .fill(isBest ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
@@ -264,7 +266,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Escucha continua · Decí \"adiós\" para detener · v2.1")
+        Text("Decí \"adiós\" para detener · v2.2")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
