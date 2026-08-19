@@ -40,11 +40,15 @@ final class VoiceService: ObservableObject {
     /// El match pendiente de confirmación cuando el modo seguro lo requiere
     @Published var pendingMatch: CatalogMatch?
     /// Cuando es true, se pide confirmación al usuario antes de ejecutar cualquier
-    /// match con confidence < 0.7. Persistido en UserDefaults.
-    @AppStorage("safeMode") var safeMode: Bool = true
+    /// match con confidence < safeModeThreshold. Persistido en UserDefaults.
+    @Published var safeMode: Bool = true {
+        didSet { UserDefaults.standard.set(safeMode, forKey: "safeMode") }
+    }
     /// Umbral de confidence (0-1) por encima del cual se ejecuta sin pedir
-    /// confirmación, incluso con modo seguro activado. Ajustable por el user.
-    @AppStorage("safeModeThreshold") var safeModeThreshold: Double = 0.7
+    /// confirmación, incluso con modo seguro activado.
+    @Published var safeModeThreshold: Double = 0.7 {
+        didSet { UserDefaults.standard.set(safeModeThreshold, forKey: "safeModeThreshold") }
+    }
 
     private let speech: SpeechManager
     private let tts: TTSManager
@@ -65,6 +69,20 @@ final class VoiceService: ObservableObject {
         self.tts = tts
         self.matcher = matcher
         self.history = history
+
+        // Cargar settings persistidos en UserDefaults.
+        // Para el primer launch (key no existe), UserDefaults devuelve 0/false
+        // para tipos primitivos. Usamos `object(forKey:)` para detectar
+        // si el key existe y settear el default solo en ese caso.
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "safeMode") == nil {
+            defaults.set(true, forKey: "safeMode")
+        }
+        self.safeMode = defaults.bool(forKey: "safeMode")
+        if defaults.object(forKey: "safeModeThreshold") == nil {
+            defaults.set(0.7, forKey: "safeModeThreshold")
+        }
+        self.safeModeThreshold = defaults.double(forKey: "safeModeThreshold")
         // Callbacks del speech manager
         self.speech.onPartialResult = { [weak self] text in
             self?.handlePartial(text)

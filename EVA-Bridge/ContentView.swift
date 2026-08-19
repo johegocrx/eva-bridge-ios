@@ -314,6 +314,7 @@ struct ContentView: View {
         case .translating: return "🔄 Traduciendo..."
         case .speaking: return "🔊 Hablando a EVA en chino"
         case .stopped: return "⏸️ Detenido"
+        case .awaitingConfirmation: return "⚠️ Esperando tu confirmación..."
         }
     }
 
@@ -323,7 +324,8 @@ struct ContentView: View {
         case .translating: return .yellow
         case .speaking: return .green
         case .stopped: return .gray
-        default: return .gray
+        case .awaitingConfirmation: return .yellow
+        case .idle: return .gray
         }
     }
 
