@@ -30,6 +30,9 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    /// true = el user detuvo manualmente (o estamos en .stopped).
+    /// El audio engine sigue activo (si está corriendo) pero el caller es
+    /// responsable de descartar los resultados.
     private var manuallyStopped: Bool = true
 
     override init() {
@@ -157,6 +160,26 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
             }
         }
     }
+
+    /// Pausa el listener sin matar el audio engine. Los callbacks de
+    /// partial/final siguen llamándose pero el caller es responsable de
+    /// decidir qué hacer (típicamente descartar).
+    ///
+    /// Usado por la mejora #6: cuando VoiceService está en .stopped, el
+    /// recognizer sigue activo para detectar "oye yoe" y reanudar.
+    func pauseListening() {
+        manuallyStopped = true
+    }
+
+    /// Resume el listener (lo despausa). El audio engine debe seguir
+    /// corriendo. Usado por la mejora #6 cuando el user dice "oye yoe"
+    /// en estado .stopped.
+    func resumeListening() {
+        manuallyStopped = false
+    }
+
+    /// Indica si el listener está pausado (manualmente).
+    var isPaused: Bool { manuallyStopped }
 
     func stopListening() {
         manuallyStopped = true

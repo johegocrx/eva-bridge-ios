@@ -550,7 +550,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"adiós\" para detener · \"PARAR\" para pánico · v2.8 (multi-lang)")
+        Text("Decí \"oye Yoe\" para empezar · \"adiós\" para detener · \"PARAR\" para pánico · v2.9")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }

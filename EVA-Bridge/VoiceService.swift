@@ -92,10 +92,14 @@ final class VoiceService: ObservableObject {
     func stop() {
         debounceTimer?.invalidate()
         debounceTimer = nil
-        speech.stopListening()
+        // Mejora #6: pause en vez de stop. El recognizer sigue activo para
+        // detectar "oye yoe" / "empezar" / etc. y reanudar automáticamente.
+        speech.pauseListening()
         tts.stop()
+        pendingMatch = nil
+        lastMatches = []
         state = .stopped
-        infoMessage = "Detenido. Toca el micrófono para reiniciar."
+        infoMessage = "⏸️ Detenido. Decí \"oye Yoe\" o \"empezar\" para reiniciar."
     }
 
     /// Botón de pánico: cancela TODO inmediatamente. Más agresivo que stop().
@@ -127,6 +131,21 @@ final class VoiceService: ObservableObject {
     }
 
     private func handlePartial(_ text: String) {
+        // Si está pausado, chequear si es un start command. Si lo es,
+        // volver a listening.
+        if state == .stopped {
+            if WakeWordDetector.isStartCommand(text) {
+                // El user quiere reanudar. Arrancamos el ciclo.
+                lastTranscript = ""
+                lastPartialText = ""
+                infoMessage = "👂 Reanudando..."
+                speech.resumeListening()  // manuallyStopped = false
+                beginListeningCycle()      // resetea state y processing
+            }
+            // Si no es start command, descartar
+            return
+        }
+
         guard state == .listening, !processing else { return }
         lastTranscript = text
         lastPartialText = text
@@ -151,6 +170,15 @@ final class VoiceService: ObservableObject {
     }
 
     private func handleFinal(_ text: String) {
+        // Si está pausado, chequear si es un start command.
+        if state == .stopped {
+            if WakeWordDetector.isStartCommand(text) {
+                speech.resumeListening()
+                beginListeningCycle()
+            }
+            return
+        }
+
         // El recognizer dio un final result. Procesar inmediatamente.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         lastTranscript = trimmed
