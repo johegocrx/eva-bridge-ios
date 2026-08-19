@@ -17,6 +17,10 @@ struct EvaCommand: Codable, Identifiable, Hashable {
     let zh: String
     let tags: [String]?
     let variants: [String]?
+    /// Traducción al inglés (mejora #4: multi-idioma). Opcional.
+    let en: String?
+    /// Traducción al ruso (mejora #4: multi-idioma). Opcional.
+    let ru: String?
 }
 
 struct CatalogMatch: Identifiable {
@@ -115,7 +119,14 @@ final class CatalogMatcher: ObservableObject {
 
         var results: [CatalogMatch] = []
         for cmd in commands {
-            let corpus = ([cmd.es] + (cmd.variants ?? []) + (cmd.tags ?? [])).joined(separator: " ")
+            // Corpus = todos los textos en todos los idiomas disponibles.
+            // Mejora #4: incluye en/ru para matchear input en otros idiomas.
+            var corpusParts: [String] = [cmd.es]
+            corpusParts.append(contentsOf: cmd.variants ?? [])
+            corpusParts.append(contentsOf: cmd.tags ?? [])
+            if let en = cmd.en { corpusParts.append(en) }
+            if let ru = cmd.ru { corpusParts.append(ru) }
+            let corpus = corpusParts.joined(separator: " ")
             let cTokens = tokenize(corpus)
             // maxScore = cuántos tokens del comando matchearon perfectamente (10 puntos c/u)
             let maxScore = cTokens.count * 10
