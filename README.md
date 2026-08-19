@@ -1,17 +1,22 @@
 # 🚗 EVA Bridge — Standalone iOS App
 
-App nativa de iOS para traducir tus comandos en español al chino mandarín, para que el asistente **EVA** de tu **Zeekr 7X** te entienda.
+App nativa de iOS para traducir tus comandos en español, inglés o ruso al chino mandarín, para que el asistente **EVA** de tu **Zeekr 7X** te entienda.
 
 **100% offline después de instalar.** No necesita PC encendida, ni internet, ni ngrok, ni servidores.
 
 ---
 
-## ✨ Qué hace
+## ✨ Qué hace (v2.9)
 
-- Te escucha en **español** (on-device, sin internet)
+- Te escucha en **español** (on-device, sin internet, SFSpeechRecognizer es-MX)
+- También entiende **inglés** y **ruso** en el top 50 de comandos (vía catálogo expandido)
 - Busca en el catálogo de **254 comandos** EVA pre-cargado
+- **Modo seguro**: si la confidence del reconocimiento es baja, NO ejecuta — pregunta con sugerencias
+- **Sugerencias por categoría**: si decís "cajuela" sin match exacto, muestra todos los comandos de cajuela
+- **Botón PARAR**: kill switch de emergencia que cancela todo instantáneamente
+- **Historial**: últimos 20 comandos ejecutados, tappeá uno para repetirlo
+- **"Oye Yoe"**: reanuda la escucha con la voz, sin tocar la pantalla
 - Pronuncia la **wake word** "嗨伊娃" (Hey EVA) + el comando en **chino mandarín** (on-device)
-- Vos solo tenés que sostener el iPhone cerca del micrófono del head unit del coche
 
 ## 🆚 Comparado con la versión PWA
 
@@ -23,6 +28,33 @@ App nativa de iOS para traducir tus comandos en español al chino mandarín, par
 | TTS chino | On-device (limitado) | **On-device (AVSpeechSynthesizer, premium)** |
 | Velocidad de respuesta | ~1-2s red | **<100ms local** |
 | Privacidad | Audio sale a Apple | **Audio nunca sale del iPhone** |
+| Multi-idioma | Solo ES | **ES + EN + RU (top 50)** |
+| Modo seguro | No | **Sí** |
+| Historial | No | **Sí (20)** |
+| Multi-idioma | Solo ES | **ES + EN + RU (top 50)** |
+| Modo seguro | No | **Sí — confirma antes de ejecutar** |
+| Historial | No | **Sí — últimos 20 comandos** |
+
+---
+
+## 🎤 Comandos de voz útiles
+
+| Decir | Acción |
+|---|---|
+| (cualquier comando de los 254 del catálogo) | Lo traduce a chino y se lo dice a EVA |
+| **"adiós"** / **"cancelar"** / **"para"** | Detiene la escucha |
+| **"oye Yoe"** / **"empezar"** / **"reanudar"** | Reanuda la escucha (cuando está pausada) |
+| **"PARAR"** (botón rojo) | Kill switch de emergencia |
+
+## ⚙️ Modo seguro (toggle en la app)
+
+- **ON (default)**: si la confidence del match es < 70%, NO ejecuta. En su lugar, pregunta: "¿Quisiste decir X?" con la lista de candidatos. Vos elegís.
+- **OFF**: ejecuta el mejor match siempre, sin preguntar.
+
+Útil cuando:
+- Hay ruido ambiente y el ASR transcribe mal
+- El head unit está con la ventana abierta
+- El user quiere tener control total antes de cada acción
 
 ---
 
@@ -165,16 +197,24 @@ Si te interesa, decime y armamos el flujo.
 ```
 eva-bridge-ios/
 ├── EVA-Bridge/
-│   ├── EVABridgeApp.swift        # Entry point SwiftUI
-│   ├── ContentView.swift          # UI principal
-│   ├── SpeechManager.swift        # SFSpeechRecognizer on-device
-│   ├── TTSManager.swift           # AVSpeechSynthesizer zh-CN
-│   ├── CatalogMatcher.swift       # Búsqueda fuzzy 254 comandos
-│   ├── Info.plist                 # Permisos mic + speech
-│   ├── catalog.json               # 254 comandos embebidos
-│   └── Assets.xcassets/           # Icono y color de acento
+│   ├── EVABridgeApp.swift        # Entry point SwiftUI (DI de managers)
+│   ├── ContentView.swift          # UI principal (header, mic, lista, historial)
+│   ├── SpeechManager.swift        # SFSpeechRecognizer on-device (es-MX) + pause/resume
+│   ├── TTSManager.swift           # AVSpeechSynthesizer zh-CN (premium voice)
+│   ├── VoiceService.swift         # Orquesta escucha continua, modo seguro, pánico
+│   ├── CatalogMatcher.swift       # Búsqueda fuzzy 254 comandos (es+en+ru) + categorías
+│   ├── CommandHistory.swift       # Historial últimos 20 comandos (UserDefaults)
+│   ├── WakeWordDetector.swift     # Stop / start / cancel commands
+│   ├── AppIntents/
+│   │   ├── OpenEVAIntent.swift    # AppIntent para "Oye Siri, abrir EVA Copilot"
+│   │   └── EVACopilotShortcuts.swift # Provider de Shortcuts
+│   ├── Info.plist                 # Permisos mic + speech + App Intents
+│   ├── catalog.json               # 254 comandos (50 con en+ru)
+│   └── Assets.xcassets/           # Logo Zeekr Z con ondas + AccentColor
 ├── project.yml                    # XcodeGen spec
-├── .github/workflows/build.yml    # GitHub Actions (build IPA)
+├── .github/workflows/build.yml    # GitHub Actions (build IPA unsigned)
+├── Tools/
+│   └── translate_catalog.py       # Script para traducir catalog.json (MyMemory API)
 └── README.md                      # Este archivo
 ```
 
