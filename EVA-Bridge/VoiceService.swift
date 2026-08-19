@@ -338,6 +338,11 @@ final class VoiceService: ObservableObject {
             pendingMatch = best
             lastMatches = Array(results.prefix(5))
             state = .awaitingConfirmation
+            // CRÍTICO: resetear processing para que handleConfirmationInput
+            // pueda procesar el siguiente input del usuario. Si no, el
+            // guard `if processing { return }` en handleConfirmationInput
+            // bloquea todo.
+            processing = false
             infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Decí el número de la opción (1 a \(lastMatches.count))."
             speakConfirmationPrompt(options: Array(results.prefix(5)))
             return
@@ -418,6 +423,9 @@ final class VoiceService: ObservableObject {
             // por voz con un número, igual que en modo seguro.
             state = .awaitingConfirmation
             pendingMatch = altMatches.first
+            // CRÍTICO: resetear processing para que handleConfirmationInput
+            // pueda procesar el siguiente input del usuario.
+            processing = false
             let intro = noMatchIntroText()
             speakEnumerationPrompt(options: altMatches, intro: intro)
             return
