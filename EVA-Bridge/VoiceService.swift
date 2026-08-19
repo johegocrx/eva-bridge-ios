@@ -49,6 +49,10 @@ final class VoiceService: ObservableObject {
     private let speech: SpeechManager
     private let tts: TTSManager
     private let matcher: CatalogMatcher
+    private let history: CommandHistory
+
+    /// El último input transcrito, para guardar en el historial al ejecutar
+    private var lastInputForHistory: String = ""
 
     // Debounce: si el último partial no cambia por este tiempo, procesar
     private var debounceTimer: Timer?
@@ -56,10 +60,11 @@ final class VoiceService: ObservableObject {
     private var lastPartialText: String = ""
     private var processing: Bool = false
 
-    init(speech: SpeechManager, tts: TTSManager, matcher: CatalogMatcher) {
+    init(speech: SpeechManager, tts: TTSManager, matcher: CatalogMatcher, history: CommandHistory) {
         self.speech = speech
         self.tts = tts
         self.matcher = matcher
+        self.history = history
         // Callbacks del speech manager
         self.speech.onPartialResult = { [weak self] text in
             self?.handlePartial(text)
@@ -93,6 +98,21 @@ final class VoiceService: ObservableObject {
         infoMessage = "Detenido. Toca el micrófono para reiniciar."
     }
 
+    /// Botón de pánico: cancela TODO inmediatamente. Más agresivo que stop().
+    /// Usado cuando el user quiere un kill switch de emergencia.
+    func panic() {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        processing = false
+        speech.stopListening()
+        tts.stop()
+        pendingMatch = nil
+        lastMatches = []
+        lastMatch = nil
+        state = .idle
+        infoMessage = "🛑 PÁNICO: todo detenido. Toca el micrófono para reiniciar."
+    }
+
     private func beginListeningCycle() {
         debounceTimer?.invalidate()
         debounceTimer = nil
@@ -110,6 +130,7 @@ final class VoiceService: ObservableObject {
         guard state == .listening, !processing else { return }
         lastTranscript = text
         lastPartialText = text
+        lastInputForHistory = text  // para el historial
 
         // Reiniciar timer de debounce. Cuando el usuario deje de hablar
         // (1.5s sin cambios), procesamos el último texto.
@@ -133,6 +154,7 @@ final class VoiceService: ObservableObject {
         // El recognizer dio un final result. Procesar inmediatamente.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         lastTranscript = trimmed
+        lastInputForHistory = trimmed
         debounceTimer?.invalidate()
         debounceTimer = nil
         guard !trimmed.isEmpty else {
@@ -205,6 +227,18 @@ final class VoiceService: ObservableObject {
         pendingMatch = nil
         state = .speaking
         infoMessage = "→ \(match.command.zh)"
+
+        // Guardar en historial
+        let wasConfirmed = (allResults != nil)  // vino de un confirmMatch()
+        let inputSnapshot = lastInputForHistory
+        let conf = match.confidence
+        history.add(
+            inputEs: inputSnapshot,
+            command: match.command,
+            confidence: conf,
+            wasConfirmed: wasConfirmed
+        )
+
         let cmdToRun = match.command
         tts.speak("嗨伊娃", completion: { [weak self] in
             guard let self = self else { return }

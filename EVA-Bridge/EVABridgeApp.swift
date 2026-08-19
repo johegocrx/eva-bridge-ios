@@ -11,16 +11,21 @@ struct EVABridgeApp: App {
     @StateObject private var speechManager = SpeechManager()
     @StateObject private var ttsManager = TTSManager()
     @StateObject private var matcher = CatalogMatcher()
+    @StateObject private var commandHistory = CommandHistory()
     @StateObject private var voiceService: VoiceService
 
     init() {
         let speech = SpeechManager()
         let tts = TTSManager()
         let match = CatalogMatcher()
+        let history = CommandHistory()
         _speechManager = StateObject(wrappedValue: speech)
         _ttsManager = StateObject(wrappedValue: tts)
         _matcher = StateObject(wrappedValue: match)
-        _voiceService = StateObject(wrappedValue: VoiceService(speech: speech, tts: tts, matcher: match))
+        _commandHistory = StateObject(wrappedValue: history)
+        _voiceService = StateObject(wrappedValue: VoiceService(
+            speech: speech, tts: tts, matcher: match, history: history
+        ))
 
         // Configurar sesión de audio
         do {
@@ -40,6 +45,7 @@ struct EVABridgeApp: App {
                 .environmentObject(ttsManager)
                 .environmentObject(matcher)
                 .environmentObject(voiceService)
+                .environmentObject(commandHistory)
         }
     }
 }

@@ -10,9 +10,11 @@ struct ContentView: View {
     @EnvironmentObject var tts: TTSManager
     @EnvironmentObject var matcher: CatalogMatcher
     @EnvironmentObject var voice: VoiceService
+    @EnvironmentObject var history: CommandHistory
 
     @State private var textInput: String = ""
     @State private var didStart = false
+    @State private var showHistory: Bool = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -41,6 +43,7 @@ struct ContentView: View {
             }
             inputRow
             resultsList
+            historySection
             footer
         }
         .padding(.horizontal, 16)
@@ -129,14 +132,34 @@ struct ContentView: View {
         .cornerRadius(10)
     }
 
-    // MARK: - Settings strip (toggle modo seguro)
+    // MARK: - Settings strip (toggle modo seguro + botón de pánico)
 
     private var settingsStrip: some View {
         HStack(spacing: 8) {
+            // Botón de pánico: kill switch de emergencia
+            Button {
+                voice.panic()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "stop.circle.fill")
+                    Text("PARAR")
+                }
+                .font(.caption2.bold())
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.red.opacity(0.85))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Toggle modo seguro
             Image(systemName: voice.safeMode ? "checkmark.shield.fill" : "shield.slash.fill")
                 .foregroundColor(voice.safeMode ? .green : .gray)
             Toggle(isOn: $voice.safeMode) {
-                Text("Modo seguro")
+                Text("Seguro")
                     .font(.caption2)
                     .foregroundColor(.white)
             }
@@ -149,7 +172,104 @@ struct ContentView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Historial (sección colapsable)
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Button {
+                    showHistory.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showHistory ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                        Text("Historial (\(history.entries.count))")
+                            .font(.caption.bold())
+                            .foregroundColor(.gray)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                if !history.entries.isEmpty {
+                    Button {
+                        history.clear()
+                    } label: {
+                        Text("Limpiar")
+                            .font(.caption2)
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if showHistory && !history.entries.isEmpty {
+                ScrollView {
+                    VStack(spacing: 3) {
+                        ForEach(history.entries.prefix(8)) { entry in
+                            historyRow(entry)
+                        }
+                    }
+                }
+                .frame(maxHeight: 140)
+            }
+        }
+    }
+
+    private func historyRow(_ entry: CommandHistory.HistoryEntry) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    if entry.wasConfirmed {
+                        Text("✓")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                    }
+                    Text(entry.commandEs)
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+                Text(entry.commandZh)
+                    .font(.caption2)
+                    .foregroundColor(.yellow.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(relativeTime(entry.timestamp))
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                if let cat = entry.category {
+                    Text(cat)
+                        .font(.caption2)
+                        .foregroundColor(.cyan.opacity(0.7))
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.gray.opacity(0.08))
+        )
+        .onTapGesture {
+            // Repetir el comando
+            tts.speak("嗨伊娃", completion: {
+                tts.speak(entry.commandZh)
+            })
+        }
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h" }
+        return "\(hours/24)d"
     }
 
     private var chineseVoiceWarning: some View {
@@ -430,7 +550,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"adiós\" para detener · v2.6")
+        Text("Decí \"adiós\" para detener · \"PARAR\" para pánico · v2.7")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
