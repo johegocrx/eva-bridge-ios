@@ -27,6 +27,7 @@ final class VoiceService: ObservableObject {
         case translating = "Traduciendo..."
         case speaking = "Hablando a EVA"
         case stopped = "Detenido"
+        case awaitingConfirmation = "Esperando tu confirmación"
     }
 
     @Published var state: State = .idle
@@ -36,6 +37,14 @@ final class VoiceService: ObservableObject {
     @Published var infoMessage: String = ""
     /// Todos los matches del último comando (para mostrar en la lista)
     @Published var lastMatches: [CatalogMatch] = []
+    /// El match pendiente de confirmación cuando el modo seguro lo requiere
+    @Published var pendingMatch: CatalogMatch?
+    /// Cuando es true, se pide confirmación al usuario antes de ejecutar cualquier
+    /// match con confidence < 0.7. Persistido en UserDefaults.
+    @AppStorage("safeMode") var safeMode: Bool = true
+    /// Umbral de confidence (0-1) por encima del cual se ejecuta sin pedir
+    /// confirmación, incluso con modo seguro activado. Ajustable por el user.
+    @AppStorage("safeModeThreshold") var safeModeThreshold: Double = 0.7
 
     private let speech: SpeechManager
     private let tts: TTSManager
@@ -151,33 +160,104 @@ final class VoiceService: ObservableObject {
             state = .stopped
             infoMessage = "Decí \"adiós\" o tocá el micrófono para reiniciar."
             lastMatches = []
+            pendingMatch = nil
             processing = false
+            return
+        }
+
+        // Cancelar una confirmación pendiente si el user dice "cancelar", "no", "nada"
+        if state == .awaitingConfirmation && WakeWordDetector.isCancelCommand(text) {
+            cancelConfirmation()
             return
         }
 
         // Buscar en catálogo
         let results = matcher.search(text)
-        if let best = results.first {
-            lastMatch = best.command
+        if results.isEmpty {
+            handleNoMatch(text: text)
+            return
+        }
+
+        let best = results.first!
+
+        // MODO SEGURO: si está activado y la confidence del mejor match es baja,
+        // NO ejecutar. En su lugar, mostrar candidatos y pedir confirmación.
+        if safeMode && best.confidence < safeModeThreshold {
+            pendingMatch = best
             lastMatches = Array(results.prefix(5))
-            infoMessage = "→ \(best.command.zh)"
-            state = .speaking
-            tts.speak("嗨伊娃", completion: { [weak self] in
-                guard let self = self else { return }
-                self.tts.speakCommand(best.command, completion: { [weak self] in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                        self?.beginListeningCycle()
-                    }
-                })
-            })
-        } else {
-            infoMessage = "Sin coincidencia. Probá de nuevo."
-            lastMatches = []
-            tts.speak("抱歉，我没听清", completion: { [weak self] in
+            state = .awaitingConfirmation
+            infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Tocá la opción correcta o decí \"cancelar\"."
+            speakConfirmationPrompt(options: Array(results.prefix(3)))
+            return
+        }
+
+        // Confidence alta o modo seguro desactivado → ejecutar
+        executeMatch(best, allResults: results)
+    }
+
+    /// Ejecuta un match confirmado. Habla el wake word + el comando a EVA y
+    /// vuelve a escuchar.
+    private func executeMatch(_ match: CatalogMatch, allResults: [CatalogMatch]? = nil) {
+        lastMatch = match.command
+        if let all = allResults {
+            lastMatches = Array(all.prefix(5))
+        }
+        pendingMatch = nil
+        state = .speaking
+        infoMessage = "→ \(match.command.zh)"
+        let cmdToRun = match.command
+        tts.speak("嗨伊娃", completion: { [weak self] in
+            guard let self = self else { return }
+            self.tts.speakCommand(cmdToRun, completion: { [weak self] in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                     self?.beginListeningCycle()
                 }
             })
-        }
+        })
+    }
+
+    /// El usuario tocó un candidato en la lista de confirmación. Ejecuta ese
+    /// match (no necesariamente el best original).
+    func confirmMatch(_ match: CatalogMatch) {
+        guard state == .awaitingConfirmation else { return }
+        processing = true  // evita que el ciclo de escucha dispare otro processCommand
+        executeMatch(match, allResults: lastMatches)
+    }
+
+    /// Cancela la confirmación pendiente. Sirve tanto para un toque en la UI
+    /// como para el comando de voz "cancelar".
+    func cancelConfirmation() {
+        pendingMatch = nil
+        lastMatches = []
+        state = .listening
+        infoMessage = "Cancelado. Decí tu comando en español."
+        tts.speak("好的", completion: { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.beginListeningCycle()
+            }
+        })
+    }
+
+    /// Maneja el caso de no match. Por ahora: pide que reintente.
+    /// (La mejora #2 va a ampliar esto para sugerir alternativas por categoría.)
+    private func handleNoMatch(text: String) {
+        infoMessage = "No te entendí. Probá con otras palabras o tocá el micrófono para reintentar."
+        lastMatches = []
+        pendingMatch = nil
+        tts.speak("抱歉，我没听清", completion: { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.beginListeningCycle()
+            }
+        })
+    }
+
+    /// Pregunta en español si el usuario quiso decir alguno de los candidatos.
+    /// (Reproduce en español usando la voz china porque no hay otra voz TTS
+    /// configurada; el chino sigue siendo entendible por hispanohablantes.)
+    private func speakConfirmationPrompt(options: [CatalogMatch]) {
+        guard let first = options.first else { return }
+        // Decimos solo la primera opción. El usuario puede tocar otras en la UI
+        // o volver a hablar.
+        tts.speak("¿Quisiste decir: \(first.command.es)?", completion: nil)
     }
 }

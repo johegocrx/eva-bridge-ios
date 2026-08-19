@@ -23,6 +23,50 @@ struct CatalogMatch: Identifiable {
     let id = UUID()
     let command: EvaCommand
     let score: Int
+    /// Puntaje máximo posible para este comando (basado en la cantidad de tokens).
+    /// Se usa para calcular `confidence` como un ratio 0-1.
+    let maxScore: Int
+
+    /// Confianza del match, de 0.0 a 1.0.
+    /// - 1.0 = match perfecto (todos los tokens del comando matchearon exactamente)
+    /// - 0.5-0.7 = match parcial con Levenshtein/contains
+    /// - <0.3 = match pobre, no se debería ejecutar sin confirmación
+    var confidence: Double {
+        guard maxScore > 0 else { return 0 }
+        return min(1.0, Double(score) / Double(maxScore))
+    }
+
+    /// Categoría semántica del comando, inferida del texto y los tags.
+    /// Útil para la mejora #2: sugerir alternativas de la misma categoría.
+    /// Devuelve un string en minúsculas y sin acentos (ej. "ventana", "cajuela", "musica").
+    var category: String? {
+        let haystack = (([command.es] + (command.variants ?? []) + (command.tags ?? [])).joined(separator: " ") + " " + (command.zh))
+            .lowercased()
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_MX"))
+        // Tabla de keywords → categoría
+        let map: [(String, [String])] = [
+            ("ventana", ["ventana", "window", "ventanilla", "玻璃", "subir ventana", "bajar ventana"]),
+            ("cajuela", ["cajuela", "maletero", "porton trasero", "trunk", "boot", "后备箱", "baul"]),
+            ("puerta", ["puerta", "door", "车门"]),
+            ("clima", ["aire", "clima", "aire acondicionado", "temperatura", "calefaccion", "ventilador", "fan", "ac"]),
+            ("musica", ["musica", "musica", "cancion", "cantar", "reproducir", "play", "pause", "pausa", "siguiente", "anterior", "volumen", "audio", "radio", "spotify", "apple music", "音乐", "歌曲"]),
+            ("luz", ["luz", "luces", "faro", "lampara", "灯光", "headlight"]),
+            ("asiento", ["asiento", "seat", "座椅", "silla"]),
+            ("navegacion", ["navegacion", "gps", "mapa", "destino", "导航", "地图", "ruta", "direccion"]),
+            ("llamada", ["llamar", "llamada", "telefono", "电话", "contacto", "marcar"]),
+            ("app", ["app", "aplicacion", "abrir aplicacion", "cerrar aplicacion", "应用"]),
+            ("techo", ["techo solar", "sunroof", "天窗", "techo"]),
+            ("espejo", ["espejo", "mirror", "后视镜"]),
+            ("alarma", ["alarma", "seguridad", "bloquear", "desbloquear", "安全", "alerta", "bocina"]),
+            ("info", ["informacion", "estado", "bateria", "autonomia", "信息", "里程", "consumo", "kilometraje"]),
+        ]
+        for (cat, keywords) in map {
+            if keywords.contains(where: { haystack.contains($0) }) {
+                return cat
+            }
+        }
+        return nil
+    }
 }
 
 // MARK: - Manager
@@ -73,6 +117,8 @@ final class CatalogMatcher: ObservableObject {
         for cmd in commands {
             let corpus = ([cmd.es] + (cmd.variants ?? []) + (cmd.tags ?? [])).joined(separator: " ")
             let cTokens = tokenize(corpus)
+            // maxScore = cuántos tokens del comando matchearon perfectamente (10 puntos c/u)
+            let maxScore = cTokens.count * 10
             var score = 0
 
             for qt in qTokens {
@@ -95,7 +141,7 @@ final class CatalogMatcher: ObservableObject {
             }
 
             if score > 0 {
-                results.append(CatalogMatch(command: cmd, score: score))
+                results.append(CatalogMatch(command: cmd, score: score, maxScore: maxScore))
             }
         }
 

@@ -30,11 +30,15 @@ struct ContentView: View {
     private var mainContent: some View {
         VStack(spacing: 6) {
             header
+            settingsStrip
             if !tts.hasChineseVoice {
                 chineseVoiceWarning
             }
             statusLabel
             voiceIndicator
+            if voice.state == .awaitingConfirmation {
+                confirmationBanner
+            }
             inputRow
             resultsList
             footer
@@ -68,6 +72,84 @@ struct ContentView: View {
             .background(Color.gray.opacity(0.15))
             .cornerRadius(8)
         }
+    }
+
+    // MARK: - Safe mode banner (solo visible cuando está en awaitingConfirmation)
+
+    private var confirmationBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .foregroundColor(.yellow)
+                Text("Modo seguro: confirmá antes de ejecutar")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            if let pending = voice.pendingMatch {
+                Text("Mejor match: \(pending.command.es) → \(pending.command.zh)")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            HStack(spacing: 8) {
+                Button {
+                    voice.cancelConfirmation()
+                } label: {
+                    Text("Cancelar")
+                        .font(.caption.bold())
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(Color.gray.opacity(0.7))
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                if let pending = voice.pendingMatch {
+                    Button {
+                        voice.confirmMatch(pending)
+                    } label: {
+                        Text("Sí, ejecutar")
+                            .font(.caption.bold())
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.yellow.opacity(0.15))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.yellow.opacity(0.4), lineWidth: 1)
+        )
+        .cornerRadius(10)
+    }
+
+    // MARK: - Settings strip (toggle modo seguro)
+
+    private var settingsStrip: some View {
+        HStack(spacing: 8) {
+            Image(systemName: voice.safeMode ? "checkmark.shield.fill" : "shield.slash.fill")
+                .foregroundColor(voice.safeMode ? .green : .gray)
+            Toggle(isOn: $voice.safeMode) {
+                Text("Modo seguro")
+                    .font(.caption2)
+                    .foregroundColor(.white)
+            }
+            .toggleStyle(.switch)
+            .tint(.green)
+            .labelsHidden()
+            Text(voice.safeMode ? "ON" : "OFF")
+                .font(.caption2.bold())
+                .foregroundColor(voice.safeMode ? .green : .gray)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     private var chineseVoiceWarning: some View {
@@ -228,9 +310,11 @@ struct ContentView: View {
         ScrollView {
             VStack(spacing: 4) {
                 if !voice.lastMatches.isEmpty {
-                    Text("Coincidencias (\(voice.lastMatches.count))")
+                    Text(voice.state == .awaitingConfirmation
+                         ? "Opciones — tocá la correcta"
+                         : "Coincidencias (\(voice.lastMatches.count))")
                         .font(.caption2)
-                        .foregroundColor(.gray)
+                        .foregroundColor(voice.state == .awaitingConfirmation ? .yellow : .gray)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 4)
                     ForEach(Array(voice.lastMatches.enumerated()), id: \.offset) { idx, m in
@@ -261,17 +345,36 @@ struct ContentView: View {
     }
 
     private func resultRow(_ m: CatalogMatch, isBest: Bool) -> some View {
-        Button {
-            tts.speak("嗨伊娃", completion: {
-                tts.speakCommand(m.command)
-            })
+        let isConfirmation = voice.state == .awaitingConfirmation
+        return Button {
+            if isConfirmation {
+                voice.confirmMatch(m)
+            } else {
+                tts.speak("嗨伊娃", completion: {
+                    tts.speakCommand(m.command)
+                })
+            }
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(m.command.es)
-                    .font(.subheadline).foregroundColor(.white)
-                Text(m.command.zh)
-                    .font(.title3.weight(.medium))
-                    .foregroundColor(isBest ? .green : .yellow)
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.command.es)
+                        .font(.subheadline).foregroundColor(.white)
+                    Text(m.command.zh)
+                        .font(.title3.weight(.medium))
+                        .foregroundColor(isBest ? .green : .yellow)
+                }
+                Spacer()
+                if isConfirmation {
+                    // Indicador de confidence como barrita
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(Int(m.confidence * 100))%")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundColor(confidenceColor(m.confidence))
+                        Text(confidenceLabel(m.confidence))
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
@@ -288,8 +391,21 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 
+    private func confidenceColor(_ c: Double) -> Color {
+        if c >= 0.7 { return .green }
+        if c >= 0.4 { return .yellow }
+        return .orange
+    }
+
+    private func confidenceLabel(_ c: Double) -> String {
+        if c >= 0.9 { return "seguro" }
+        if c >= 0.7 { return "bueno" }
+        if c >= 0.4 { return "dudoso" }
+        return "bajo"
+    }
+
     private var footer: some View {
-        Text("Decí \"adiós\" para detener · v2.3")
+        Text("Decí \"adiós\" para detener · v2.4")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
