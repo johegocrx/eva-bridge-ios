@@ -241,14 +241,41 @@ final class VoiceService: ObservableObject {
     /// Maneja el caso de no match. Por ahora: pide que reintente.
     /// (La mejora #2 va a ampliar esto para sugerir alternativas por categoría.)
     private func handleNoMatch(text: String) {
-        infoMessage = "No te entendí. Probá con otras palabras o tocá el micrófono para reintentar."
-        lastMatches = []
-        pendingMatch = nil
-        tts.speak("抱歉，我没听清", completion: { [weak self] in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.beginListeningCycle()
+        // Intentar encontrar alternativas por categoría antes de rendirse.
+        let alternatives = matcher.searchByCategory(text)
+        if !alternatives.isEmpty {
+            // Mostrar las alternativas como matches (sin confidence, score=0, maxScore=0 → conf=0)
+            let altMatches = alternatives.enumerated().map { idx, cmd in
+                CatalogMatch(command: cmd, score: 1, maxScore: 10)
             }
-        })
+            lastMatches = altMatches
+            infoMessage = "No encontré ese comando exacto. ¿Quisiste alguna de estas opciones de '\(firstToken(text))'?"
+            // Decimos el primer comando como sugerencia
+            if let first = alternatives.first {
+                tts.speak("¿Quisiste: \(first.es)?", completion: { [weak self] in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                        self?.beginListeningCycle()
+                    }
+                })
+            } else {
+                beginListeningCycle()
+            }
+        } else {
+            infoMessage = "No te entendí. Probá con otras palabras o tocá el micrófono para reintentar."
+            lastMatches = []
+            pendingMatch = nil
+            tts.speak("抱歉，我没听清", completion: { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                    self?.beginListeningCycle()
+                }
+            })
+        }
+    }
+
+    /// Helper: devuelve la primera palabra significativa del texto.
+    private func firstToken(_ text: String) -> String {
+        let parts = text.split(separator: " ").map(String.init)
+        return parts.first(where: { $0.count > 2 }) ?? text
     }
 
     /// Pregunta en español si el usuario quiso decir alguno de los candidatos.

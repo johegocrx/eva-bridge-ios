@@ -151,6 +151,60 @@ final class CatalogMatcher: ObservableObject {
         return top
     }
 
+    /// Busca comandos cuya categoría (inferida del texto+tags) coincida con
+    /// alguna de las keywords provistas. Usado por la mejora #2 cuando el
+    /// `search()` no encuentra match: devolvemos todas las opciones del tema
+    /// que el user mencionó.
+    ///
+    /// Ejemplo: si el user dice "cajuela" y no hay match exacto, esta función
+    /// devuelve todos los comandos cuya `category` sea "cajuela" (abrir maletero,
+    /// cerrar maletero, etc.)
+    func searchByCategory(_ query: String, maxResults: Int = 8) -> [EvaCommand] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        let qTokens = tokenize(q)
+        guard !qTokens.isEmpty else { return [] }
+
+        // Tabla de mapeo: token → categorías relacionadas.
+        // Esto permite que el user diga "ventana" y devuelva comandos de
+        // category=ventana aunque el comando diga "subir el cristal".
+        let categoryKeywords: [String: [String]] = [
+            "ventana": ["ventana", "ventanilla", "cristal"],
+            "cajuela": ["cajuela", "maletero", "baul", "porton", "trunk"],
+            "puerta": ["puerta", "portezuela"],
+            "clima": ["aire", "clima", "temperatura", "calefaccion", "ventilador"],
+            "musica": ["musica", "musica", "cancion", "audio", "radio", "volumen", "sonido"],
+            "luz": ["luz", "luces", "faro", "lampara"],
+            "asiento": ["asiento", "silla", "asientos"],
+            "navegacion": ["navegacion", "gps", "mapa", "destino", "ruta", "direccion"],
+            "llamada": ["llamar", "llamada", "telefono", "contacto", "marcar"],
+            "app": ["app", "aplicacion"],
+            "techo": ["techo", "sunroof"],
+            "espejo": ["espejo"],
+            "alarma": ["alarma", "seguridad", "bloquear", "desbloquear"],
+            "info": ["informacion", "estado", "bateria", "autonomia", "consumo", "kilometraje"],
+        ]
+
+        // Encontrar categorías que matcheen los tokens del query
+        var matchedCategories: Set<String> = []
+        for token in qTokens {
+            for (cat, keywords) in categoryKeywords {
+                if keywords.contains(token) {
+                    matchedCategories.insert(cat)
+                }
+            }
+        }
+        guard !matchedCategories.isEmpty else { return [] }
+
+        // Filtrar comandos cuya category inferida esté en matchedCategories
+        let results = commands.filter { cmd in
+            let probe = CatalogMatch(command: cmd, score: 0, maxScore: 0)
+            guard let cat = probe.category else { return false }
+            return matchedCategories.contains(cat)
+        }
+        return Array(results.prefix(maxResults))
+    }
+
     // MARK: - Util
 
     /// Normaliza texto: lowercase, sin acentos, sin puntuación, tokenizado.

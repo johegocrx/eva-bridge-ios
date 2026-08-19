@@ -346,9 +346,17 @@ struct ContentView: View {
 
     private func resultRow(_ m: CatalogMatch, isBest: Bool) -> some View {
         let isConfirmation = voice.state == .awaitingConfirmation
+        // Si el maxScore es 0, viene de las sugerencias de categoría (mejora #2).
+        // Las mostramos como "sugerencias" (color azul) en vez de "coincidencias" (verde/amarillo).
+        let isSuggestion = m.maxScore == 0 || m.confidence < 0.05
         return Button {
             if isConfirmation {
                 voice.confirmMatch(m)
+            } else if isSuggestion {
+                // Ejecutar directo, sin modo seguro (es sugerencia, no match)
+                tts.speak("嗨伊娃", completion: {
+                    tts.speakCommand(m.command)
+                })
             } else {
                 tts.speak("嗨伊娃", completion: {
                     tts.speakCommand(m.command)
@@ -357,15 +365,20 @@ struct ContentView: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(m.command.es)
-                        .font(.subheadline).foregroundColor(.white)
+                    HStack(spacing: 4) {
+                        if isSuggestion {
+                            Text("💡")
+                                .font(.caption2)
+                        }
+                        Text(m.command.es)
+                            .font(.subheadline).foregroundColor(.white)
+                    }
                     Text(m.command.zh)
                         .font(.title3.weight(.medium))
-                        .foregroundColor(isBest ? .green : .yellow)
+                        .foregroundColor(isSuggestion ? .blue : (isBest ? .green : .yellow))
                 }
                 Spacer()
-                if isConfirmation {
-                    // Indicador de confidence como barrita
+                if isConfirmation && !isSuggestion {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("\(Int(m.confidence * 100))%")
                             .font(.caption2.monospacedDigit())
@@ -381,14 +394,26 @@ struct ContentView: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isBest ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+                    .fill(rowBackground(isBest: isBest, isSuggestion: isSuggestion))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isBest ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1)
+                    .stroke(rowStroke(isBest: isBest, isSuggestion: isSuggestion), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func rowBackground(isBest: Bool, isSuggestion: Bool) -> Color {
+        if isSuggestion { return Color.blue.opacity(0.1) }
+        if isBest { return Color.green.opacity(0.15) }
+        return Color.gray.opacity(0.1)
+    }
+
+    private func rowStroke(isBest: Bool, isSuggestion: Bool) -> Color {
+        if isSuggestion { return Color.blue.opacity(0.3) }
+        if isBest { return Color.green.opacity(0.3) }
+        return Color.clear
     }
 
     private func confidenceColor(_ c: Double) -> Color {
@@ -405,7 +430,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"adiós\" para detener · v2.4")
+        Text("Decí \"adiós\" para detener · v2.6")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
