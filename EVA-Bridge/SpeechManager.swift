@@ -49,6 +49,51 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
         if !self.onDeviceSupported {
             self.status = "On-device no soportado. Se usará servidor."
         }
+
+        // CRÍTICO: suscribirse a interrupciones de audio. Cuando el TTS
+        // toma el speaker, dispara una interrupción. Si no la manejamos,
+        // el audioEngine queda en estado roto y el recognizer no captura.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+    }
+
+    /// Maneja las interrupciones de audio (ej. cuando el TTS habla).
+    /// Cuando termina la interrupción, re-arranca el recognizer.
+    @objc nonisolated func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeRaw) else {
+            return
+        }
+        switch type {
+        case .began:
+            // El TTS u otra app tomó el speaker. Pausar recognition.
+            Task { @MainActor in
+                self.status = "Audio interrumpido"
+                self.cleanupAudioEngine()
+            }
+        case .ended:
+            // La interrupción terminó. Re-arrancar el recognizer.
+            Task { @MainActor in
+                self.status = "Reanudando audio..."
+                // Re-activar audio session
+                do {
+                    try AVAudioSession.sharedInstance().setActive(true)
+                } catch {
+                    // Continuar de todas formas
+                }
+                // Si el caller quiere seguir escuchando, re-iniciar
+                if !self.manuallyStopped {
+                    self.startListening()
+                }
+            }
+        @unknown default:
+            break
+        }
     }
 
     /// Cambia el locale del recognizer. Si está activo, lo reinicia.
