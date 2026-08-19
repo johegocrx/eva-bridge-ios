@@ -179,6 +179,15 @@ final class VoiceService: ObservableObject {
             return
         }
 
+        // Si está esperando confirmación, el user está diciendo algo
+        // para elegir opción. Procesar inmediatamente.
+        if state == .awaitingConfirmation {
+            lastTranscript = text
+            lastPartialText = text
+            handleConfirmationInput(text)
+            return
+        }
+
         guard state == .listening, !processing else { return }
         lastTranscript = text
         lastPartialText = text
@@ -212,6 +221,16 @@ final class VoiceService: ObservableObject {
             return
         }
 
+        // Si está esperando confirmación, procesar el input directamente
+        // (sin debounce porque es una respuesta corta: "uno", "dos", etc.)
+        if state == .awaitingConfirmation {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            lastTranscript = trimmed
+            lastInputForHistory = trimmed
+            handleConfirmationInput(trimmed)
+            return
+        }
+
         // El recognizer dio un final result. Procesar inmediatamente.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         lastTranscript = trimmed
@@ -226,6 +245,38 @@ final class VoiceService: ObservableObject {
         }
         if !processing {
             processCommand(trimmed)
+        }
+    }
+
+    /// Maneja el input del user cuando state == .awaitingConfirmation.
+    /// Detecta:
+    /// 1) Comandos de cancel ("cancelar", "no", "nada")
+    /// 2) Números 1-8 (palabras o dígitos) para seleccionar opción
+    /// 3) Cualquier otra cosa → pide que diga un número
+    func handleConfirmationInput(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if processing { return }
+        processing = true
+
+        if WakeWordDetector.isCancelCommand(trimmed) {
+            cancelConfirmation()
+            return
+        }
+        if let num = WakeWordDetector.extractOptionNumber(trimmed),
+           num >= 1, num <= lastMatches.count {
+            confirmMatch(lastMatches[num - 1])
+            return
+        }
+        // Si dice otra cosa, le pedimos que diga un número
+        if !lastMatches.isEmpty {
+            infoMessage = pickNumberInfoText()
+            speakEnumerationReminder(options: lastMatches)
+            // processing = false y volver a listening
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.processing = false
+                self?.beginListeningCycle()
+            }
         }
     }
 
