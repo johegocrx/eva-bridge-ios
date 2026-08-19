@@ -147,7 +147,7 @@ final class VoiceService: ObservableObject {
         lastMatches = []
         lastMatch = nil
         state = .idle
-        infoMessage = "🛑 PÁNICO: todo detenido. Toca el micrófono para reiniciar."
+        infoMessage = "🛑 PÁNICO: todo detenido. Toca el micrófono o decí \"oye Yoe\" para reiniciar."
     }
 
     private func beginListeningCycle() {
@@ -239,9 +239,9 @@ final class VoiceService: ObservableObject {
 
         // Comandos de stop
         if WakeWordDetector.isStopCommand(text) {
-            tts.speak("好的")
+            tts.speakInSpanish("Cancelado. Decí \"oye Yoe\" para volver.")
             state = .stopped
-            infoMessage = "Decí \"adiós\" o tocá el micrófono para reiniciar."
+            infoMessage = "⏸️ Detenido. Decí \"oye Yoe\" o \"empezar\" para reiniciar."
             lastMatches = []
             pendingMatch = nil
             processing = false
@@ -343,8 +343,8 @@ final class VoiceService: ObservableObject {
         pendingMatch = nil
         lastMatches = []
         state = .listening
-        infoMessage = "Cancelado. Decí tu comando en español."
-        tts.speak("好的", completion: { [weak self] in
+        infoMessage = "Cancelado. Decí tu comando."
+        tts.speakInSpanish("Cancelado.", completion: { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.beginListeningCycle()
             }
@@ -367,17 +367,36 @@ final class VoiceService: ObservableObject {
             // por voz con un número, igual que en modo seguro.
             state = .awaitingConfirmation
             pendingMatch = altMatches.first
-            speakEnumerationPrompt(options: altMatches, intro: "No entendí, pero encontré estas opciones:")
+            let intro = noMatchIntroText()
+            speakEnumerationPrompt(options: altMatches, intro: intro)
             return
         } else {
-            infoMessage = "No te entendí. Probá con otras palabras o tocá el micrófono para reintentar."
+            infoMessage = noMatchInfoText()
             lastMatches = []
             pendingMatch = nil
-            tts.speak("抱歉，我没听清", completion: { [weak self] in
+            tts.speakInLocale(noMatchInfoText(), locale: speechLocale, completion: { [weak self] in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                     self?.beginListeningCycle()
                 }
             })
+        }
+    }
+
+    /// Texto del intro cuando no hay match (en el idioma del ASR)
+    private func noMatchIntroText() -> String {
+        switch speechLocale {
+        case "en-US": return "I didn't understand, but I found these options:"
+        case "ru-RU": return "Я не понял, но нашёл эти варианты:"
+        default: return "No entendí, pero encontré estas opciones:"
+        }
+    }
+
+    /// Texto del infoMessage cuando no hay match (en el idioma del ASR)
+    private func noMatchInfoText() -> String {
+        switch speechLocale {
+        case "en-US": return "I didn't understand. Try other words."
+        case "ru-RU": return "Я не понял. Попробуйте другие слова."
+        default: return "No te entendí. Probá con otras palabras."
         }
     }
 
@@ -396,15 +415,47 @@ final class VoiceService: ObservableObject {
 
     /// Lee en voz alta una lista enumerada de opciones. Formato:
     /// "Elige una opción. Opción uno: <es>. Opción dos: <es>. ..."
+    /// USA LA VOZ DEL LOCALE DEL ASR (es/en/ru) para que el user entienda
+    /// en el idioma que está hablando.
     private func speakEnumerationPrompt(options: [CatalogMatch], intro: String) {
         guard !options.isEmpty else { return }
+        let text = enumerationText(options: options, intro: intro)
+        tts.speakInLocale(text, locale: speechLocale, completion: nil)
+    }
+
+    /// Construye el texto enumerado según el locale del ASR.
+    /// En español: "Opción uno: <es>"
+    /// En inglés: "Option one: <es>" (o usa el campo 'en' si existe)
+    /// En ruso: usa el campo 'ru' si existe
+    private func enumerationText(options: [CatalogMatch], intro: String) -> String {
+        let lang = speechLocale
         var parts: [String] = [intro]
         for (idx, m) in options.prefix(5).enumerated() {
-            let numberWord = numberWordSpanish(idx + 1)
-            parts.append("Opción \(numberWord): \(m.command.es)")
+            let num = idx + 1
+            let optionLabel: String
+            let optionText: String
+            switch lang {
+            case "en-US":
+                optionLabel = "Option \(numberWordEnglish(num))"
+                optionText = m.command.en ?? m.command.es
+            case "ru-RU":
+                optionLabel = "Вариант \(numberWordRussian(num))"
+                optionText = m.command.ru ?? m.command.es
+            default: // es-MX
+                optionLabel = "Opción \(numberWordSpanish(num))"
+                optionText = m.command.es
+            }
+            parts.append("\(optionLabel): \(optionText)")
         }
-        parts.append("Decí el número de la que querés, o cancelar.")
-        tts.speak(parts.joined(separator: ". "), completion: nil)
+        // Prompt final también en el idioma
+        let finalPrompt: String
+        switch lang {
+        case "en-US": finalPrompt = "Say the number, or cancel."
+        case "ru-RU": finalPrompt = "Скажите номер, или отмена."
+        default: finalPrompt = "Decí el número de la que querés, o cancelar."
+        }
+        parts.append(finalPrompt)
+        return parts.joined(separator: ". ")
     }
 
     /// Recordatorio: si el user dice algo que no es un número durante
@@ -424,6 +475,36 @@ final class VoiceService: ObservableObject {
         case 6: return "seis"
         case 7: return "siete"
         case 8: return "ocho"
+        default: return "\(n)"
+        }
+    }
+
+    /// Convierte un número 1-8 a su palabra en inglés.
+    private func numberWordEnglish(_ n: Int) -> String {
+        switch n {
+        case 1: return "one"
+        case 2: return "two"
+        case 3: return "three"
+        case 4: return "four"
+        case 5: return "five"
+        case 6: return "six"
+        case 7: return "seven"
+        case 8: return "eight"
+        default: return "\(n)"
+        }
+    }
+
+    /// Convierte un número 1-8 a su palabra en ruso.
+    private func numberWordRussian(_ n: Int) -> String {
+        switch n {
+        case 1: return "один"
+        case 2: return "два"
+        case 3: return "три"
+        case 4: return "четыре"
+        case 5: return "пять"
+        case 6: return "шесть"
+        case 7: return "семь"
+        case 8: return "восемь"
         default: return "\(n)"
         }
     }

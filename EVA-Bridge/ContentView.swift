@@ -49,6 +49,136 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.top, 6)
         .padding(.bottom, 8)
+        // Overlay modal con las opciones cuando está awaitingConfirmation
+        .overlay {
+            if voice.state == .awaitingConfirmation {
+                confirmationOverlay
+            }
+        }
+    }
+
+    // MARK: - Confirmation overlay (modal fullscreen)
+
+    /// Overlay modal que muestra las opciones GRANDES con número visible.
+    /// Aparece cuando state == .awaitingConfirmation para que el user
+    /// pueda elegir sin tener que hacer scroll o buscar entre otros
+    /// elementos. El fondo se oscurece para enfocar la atención.
+    private var confirmationOverlay: some View {
+        ZStack {
+            // Fondo oscuro semitransparente
+            Color.black.opacity(0.85).ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                // Header
+                VStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.yellow)
+                    Text(headerText())
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 12)
+
+                // Lista de opciones GRANDES
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(Array(voice.lastMatches.enumerated()), id: \.offset) { idx, m in
+                            overlayOptionRow(number: idx + 1, match: m)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // Botones de acción
+                HStack(spacing: 12) {
+                    Button {
+                        voice.cancelConfirmation()
+                    } label: {
+                        Text(cancelButtonText())
+                            .font(.callout.bold())
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.gray.opacity(0.5))
+                            .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            }
+            .background(Color(red: 0.1, green: 0.1, blue: 0.15))
+            .cornerRadius(16)
+            .padding(20)
+        }
+    }
+
+    /// Header del overlay en el idioma del ASR
+    private func headerText() -> String {
+        switch voice.speechLocale {
+        case "en-US": return "Did you mean? Say the number."
+        case "ru-RU": return "Вы имели в виду? Скажите номер."
+        default: return "¿Quisiste decir? Decí el número."
+        }
+    }
+
+    /// Texto del botón cancelar en el idioma del ASR
+    private func cancelButtonText() -> String {
+        switch voice.speechLocale {
+        case "en-US": return "Cancel"
+        case "ru-RU": return "Отмена"
+        default: return "Cancelar"
+        }
+    }
+
+    /// Fila de opción en el overlay. Número grande a la izquierda,
+    /// texto del comando a la derecha.
+    private func overlayOptionRow(number: Int, match: CatalogMatch) -> some View {
+        Button {
+            voice.confirmMatch(match)
+        } label: {
+            HStack(spacing: 12) {
+                // Número grande
+                Text("\(number)")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.black)
+                    .frame(width: 56, height: 56)
+                    .background(number == 1 ? Color.green : Color.yellow)
+                    .clipShape(Circle())
+
+                // Texto del comando en el idioma del ASR
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(optionText(for: match))
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                    Text(match.command.zh)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Devuelve el texto del comando en el idioma del ASR
+    private func optionText(for match: CatalogMatch) -> String {
+        switch voice.speechLocale {
+        case "en-US": return match.command.en ?? match.command.es
+        case "ru-RU": return match.command.ru ?? match.command.es
+        default: return match.command.es
+        }
     }
 
     private var header: some View {
