@@ -347,6 +347,11 @@ final class VoiceService: ObservableObject {
             // CRÍTICO: resetear processing para que handleConfirmationInput
             // pueda procesar el siguiente input del usuario.
             processing = false
+            // CRÍTICO 2: re-armar el recognizer. Después de hablarle al user
+            // las opciones con TTS, el audioEngine se puede haber detenido.
+            // Si está parado, el ASR no captura. Llamamos startListening()
+            // para reactivarlo antes de que el user responda.
+            speech.startListening()
             infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Decí el número de la opción (1 a \(lastMatches.count))."
             speakConfirmationPrompt(options: Array(results.prefix(5)))
             return
@@ -453,9 +458,9 @@ final class VoiceService: ObservableObject {
             // por voz con un número, igual que en modo seguro.
             state = .awaitingConfirmation
             pendingMatch = altMatches.first
-            // CRÍTICO: resetear processing para que handleConfirmationInput
-            // pueda procesar el siguiente input del usuario.
+            // CRÍTICO: resetear processing + re-armar recognizer
             processing = false
+            speech.startListening()
             let intro = noMatchIntroText()
             speakEnumerationPrompt(options: altMatches, intro: intro)
             return

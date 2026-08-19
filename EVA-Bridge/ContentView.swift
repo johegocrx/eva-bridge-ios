@@ -68,27 +68,27 @@ struct ContentView: View {
             // Fondo oscuro semitransparente
             Color.black.opacity(0.85).ignoresSafeArea()
 
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 // Header
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     Image(systemName: "exclamationmark.shield.fill")
-                        .font(.system(size: 36))
+                        .font(.system(size: 28))
                         .foregroundColor(.yellow)
                     Text(headerText())
-                        .font(.headline)
+                        .font(.subheadline.bold())
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                 }
-                .padding(.top, 12)
+                .padding(.top, 10)
 
-                // Lista de opciones GRANDES
+                // Lista de opciones
                 ScrollView {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         ForEach(Array(voice.lastMatches.enumerated()), id: \.offset) { idx, m in
                             overlayOptionRow(number: idx + 1, match: m)
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
                 }
 
                 // Botones de acción
@@ -100,14 +100,14 @@ struct ContentView: View {
                             .font(.callout.bold())
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 10)
                             .background(Color.gray.opacity(0.5))
                             .cornerRadius(10)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .padding(.bottom, 12)
             }
             .background(Color(red: 0.1, green: 0.1, blue: 0.15))
             .cornerRadius(16)
@@ -133,39 +133,43 @@ struct ContentView: View {
         }
     }
 
-    /// Fila de opción en el overlay. Número grande a la izquierda,
-    /// texto del comando a la derecha.
+    /// Fila de opción en el overlay. Número a la izquierda, texto del
+    /// comando a la derecha. Tamaños compactos para que entre todo en
+    /// pantalla sin scroll.
     private func overlayOptionRow(number: Int, match: CatalogMatch) -> some View {
         Button {
             voice.confirmMatch(match)
         } label: {
-            HStack(spacing: 12) {
-                // Número grande
+            HStack(spacing: 10) {
+                // Número
                 Text("\(number)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.black)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 40, height: 40)
                     .background(number == 1 ? Color.green : Color.yellow)
                     .clipShape(Circle())
 
                 // Texto del comando en el idioma del ASR
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(optionText(for: match))
-                        .font(.body.weight(.semibold))
+                        .font(.subheadline)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
+                        .lineLimit(2)
                     Text(match.command.zh)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.gray)
+                        .lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
+                    .font(.caption)
                     .foregroundColor(.gray)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 10)
                     .fill(Color.white.opacity(0.08))
             )
         }
@@ -700,7 +704,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"oye Yoe\" para empezar · \"adiós\" para detener · \"PARAR\" para pánico · v2.16")
+        Text("Decí \"oye Yoe\" para empezar · \"adiós\" para detener · \"PARAR\" para pánico · v2.17")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }
