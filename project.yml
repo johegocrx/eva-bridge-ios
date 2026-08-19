@@ -17,8 +17,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     TARGETED_DEVICE_FAMILY: "1"
     PRODUCT_BUNDLE_IDENTIFIER: com.evabridge.zeekr7x
-    MARKETING_VERSION: "2.17"
-    CURRENT_PROJECT_VERSION: "17"
+    MARKETING_VERSION: "2.18"
+    CURRENT_PROJECT_VERSION: "18"
     SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
     GCC_TREAT_WARNINGS_AS_ERRORS: NO
     ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -39,8 +39,8 @@ targets:
       properties:
         CFBundleDisplayName: EVA Copilot
         CFBundleIdentifier: com.evabridge.zeekr7x
-        CFBundleVersion: "17"
-        CFBundleShortVersionString: "2.17"
+        CFBundleVersion: "18"
+        CFBundleShortVersionString: "2.18"
         NSSpeechRecognitionUsageDescription: "Eva Copilot escucha tu voz en español para detectar la palabra clave y traducir tus comandos al chino."
         NSMicrophoneUsageDescription: "Eva Copilot necesita el micrófono para escucharte cuando decís Hola Yoe y traducir tus comandos."
         UIBackgroundModes:

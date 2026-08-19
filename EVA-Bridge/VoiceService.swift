@@ -347,13 +347,14 @@ final class VoiceService: ObservableObject {
             // CRÍTICO: resetear processing para que handleConfirmationInput
             // pueda procesar el siguiente input del usuario.
             processing = false
-            // CRÍTICO 2: re-armar el recognizer. Después de hablarle al user
-            // las opciones con TTS, el audioEngine se puede haber detenido.
-            // Si está parado, el ASR no captura. Llamamos startListening()
-            // para reactivarlo antes de que el user responda.
+            // CRÍTICO 2: re-armar el recognizer y ESPERAR 0.3s antes de
+            // hablar las opciones. Si hablamos inmediatamente, el TTS
+            // puede interrumpir el armado del recognizer.
             speech.startListening()
             infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Decí el número de la opción (1 a \(lastMatches.count))."
-            speakConfirmationPrompt(options: Array(results.prefix(5)))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.speakConfirmationPrompt(options: Array(results.prefix(5)))
+            }
             return
         }
 
