@@ -132,7 +132,7 @@ struct ContentView: View {
         .cornerRadius(10)
     }
 
-    // MARK: - Settings strip (toggle modo seguro + botón de pánico)
+    // MARK: - Settings strip (toggle modo seguro + botón de pánico + idioma ASR)
 
     private var settingsStrip: some View {
         HStack(spacing: 8) {
@@ -154,6 +154,24 @@ struct ContentView: View {
             .buttonStyle(.plain)
 
             Spacer()
+
+            // Idioma ASR (es/en/ru)
+            Menu {
+                Button("Español") { voice.speechLocale = "es-MX" }
+                Button("English") { voice.speechLocale = "en-US" }
+                Button("Русский") { voice.speechLocale = "ru-RU" }
+            } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "globe")
+                    Text(voice.speechLocaleDisplay)
+                        .font(.caption2.bold())
+                }
+                .foregroundColor(.cyan)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.cyan.opacity(0.15))
+                .cornerRadius(6)
+            }
 
             // Toggle modo seguro
             Image(systemName: voice.safeMode ? "checkmark.shield.fill" : "shield.slash.fill")
@@ -552,7 +570,7 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        Text("Decí \"oye Yoe\" para empezar · \"adiós\" para detener · \"PARAR\" para pánico · v2.9")
+        Text("Decí \"oye Yoe\" para empezar · \"adiós\" para detener · \"PARAR\" para pánico · v2.11")
             .font(.caption2)
             .foregroundColor(.gray.opacity(0.6))
     }

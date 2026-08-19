@@ -49,6 +49,21 @@ final class VoiceService: ObservableObject {
     @Published var safeModeThreshold: Double = 0.7 {
         didSet { UserDefaults.standard.set(safeModeThreshold, forKey: "safeModeThreshold") }
     }
+    /// Locale del ASR (es-MX, en-US, ru-RU). Cambio de idioma reinicia
+    /// el recognizer. El corpus del matcher se mantiene (ya incluye en/ru).
+    @Published var speechLocale: String = "es-MX" {
+        didSet {
+            UserDefaults.standard.set(speechLocale, forKey: "speechLocale")
+            speech.setLocale(speechLocale)
+            // Reiniciar escucha para que tome el nuevo recognizer
+            if state == .listening || state == .idle {
+                speech.stopListening()
+                beginListeningCycle()
+            }
+        }
+    }
+    /// Nombre display del locale actual
+    var speechLocaleDisplay: String { speech.currentLocaleDisplay }
 
     private let speech: SpeechManager
     private let tts: TTSManager
@@ -233,10 +248,28 @@ final class VoiceService: ObservableObject {
             return
         }
 
-        // Cancelar una confirmación pendiente si el user dice "cancelar", "no", "nada"
-        if state == .awaitingConfirmation && WakeWordDetector.isCancelCommand(text) {
-            cancelConfirmation()
-            return
+        // Si está esperando confirmación, el user puede:
+        // 1) Decir "cancelar" / "no" → cancelar
+        // 2) Decir un número (1-8) → seleccionar esa opción
+        // 3) Tocar una opción en la lista (vía confirmMatch)
+        if state == .awaitingConfirmation {
+            if WakeWordDetector.isCancelCommand(text) {
+                cancelConfirmation()
+                return
+            }
+            if let num = WakeWordDetector.extractOptionNumber(text), num >= 1, num <= lastMatches.count {
+                confirmMatch(lastMatches[num - 1])
+                return
+            }
+            // Si dice otra cosa que no es número ni cancel, le pedimos
+            // que elija un número
+            if !lastMatches.isEmpty {
+                infoMessage = "Decí el número de la opción que querés (1 a \(lastMatches.count)), o \"cancelar\"."
+                speakEnumerationReminder(options: lastMatches)
+                processing = false
+                beginListeningCycle()
+                return
+            }
         }
 
         // Buscar en catálogo
@@ -254,8 +287,8 @@ final class VoiceService: ObservableObject {
             pendingMatch = best
             lastMatches = Array(results.prefix(5))
             state = .awaitingConfirmation
-            infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Tocá la opción correcta o decí \"cancelar\"."
-            speakConfirmationPrompt(options: Array(results.prefix(3)))
+            infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Decí el número de la opción (1 a \(lastMatches.count))."
+            speakConfirmationPrompt(options: Array(results.prefix(5)))
             return
         }
 
@@ -329,17 +362,13 @@ final class VoiceService: ObservableObject {
                 CatalogMatch(command: cmd, score: 1, maxScore: 10)
             }
             lastMatches = altMatches
-            infoMessage = "No encontré ese comando exacto. ¿Quisiste alguna de estas opciones de '\(firstToken(text))'?"
-            // Decimos el primer comando como sugerencia
-            if let first = alternatives.first {
-                tts.speak("¿Quisiste: \(first.es)?", completion: { [weak self] in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                        self?.beginListeningCycle()
-                    }
-                })
-            } else {
-                beginListeningCycle()
-            }
+            infoMessage = "No encontré ese comando exacto. ¿Quisiste alguna de estas opciones? Decí el número (1 a \(altMatches.count))."
+            // Pasamos a estado awaitingConfirmation para que el user pueda elegir
+            // por voz con un número, igual que en modo seguro.
+            state = .awaitingConfirmation
+            pendingMatch = altMatches.first
+            speakEnumerationPrompt(options: altMatches, intro: "No entendí, pero encontré estas opciones:")
+            return
         } else {
             infoMessage = "No te entendí. Probá con otras palabras o tocá el micrófono para reintentar."
             lastMatches = []
@@ -359,12 +388,43 @@ final class VoiceService: ObservableObject {
     }
 
     /// Pregunta en español si el usuario quiso decir alguno de los candidatos.
-    /// (Reproduce en español usando la voz china porque no hay otra voz TTS
-    /// configurada; el chino sigue siendo entendible por hispanohablantes.)
+    /// Enumera todas las opciones con número para que el user pueda decir
+    /// "la uno", "la dos", etc.
     private func speakConfirmationPrompt(options: [CatalogMatch]) {
-        guard let first = options.first else { return }
-        // Decimos solo la primera opción. El usuario puede tocar otras en la UI
-        // o volver a hablar.
-        tts.speak("¿Quisiste decir: \(first.command.es)?", completion: nil)
+        speakEnumerationPrompt(options: options, intro: "Elige una opción:")
+    }
+
+    /// Lee en voz alta una lista enumerada de opciones. Formato:
+    /// "Elige una opción. Opción uno: <es>. Opción dos: <es>. ..."
+    private func speakEnumerationPrompt(options: [CatalogMatch], intro: String) {
+        guard !options.isEmpty else { return }
+        var parts: [String] = [intro]
+        for (idx, m) in options.prefix(5).enumerated() {
+            let numberWord = numberWordSpanish(idx + 1)
+            parts.append("Opción \(numberWord): \(m.command.es)")
+        }
+        parts.append("Decí el número de la que querés, o cancelar.")
+        tts.speak(parts.joined(separator: ". "), completion: nil)
+    }
+
+    /// Recordatorio: si el user dice algo que no es un número durante
+    /// awaitingConfirmation, le recordamos las opciones.
+    private func speakEnumerationReminder(options: [CatalogMatch]) {
+        speakEnumerationPrompt(options: options, intro: "Por favor, decí un número.")
+    }
+
+    /// Convierte un número 1-8 a su palabra en español.
+    private func numberWordSpanish(_ n: Int) -> String {
+        switch n {
+        case 1: return "uno"
+        case 2: return "dos"
+        case 3: return "tres"
+        case 4: return "cuatro"
+        case 5: return "cinco"
+        case 6: return "seis"
+        case 7: return "siete"
+        case 8: return "ocho"
+        default: return "\(n)"
+        }
     }
 }

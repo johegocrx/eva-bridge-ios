@@ -26,7 +26,7 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
     /// y debería ser reiniciado. NO se llama cuando se detiene manualmente.
     var onAutoRestartNeeded: (() -> Void)?
 
-    private let recognizer: SFSpeechRecognizer?
+    private var recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -34,14 +34,54 @@ final class SpeechManager: NSObject, ObservableObject, SFSpeechRecognizerDelegat
     /// El audio engine sigue activo (si está corriendo) pero el caller es
     /// responsable de descartar los resultados.
     private var manuallyStopped: Bool = true
+    /// Locale actual del recognizer (es-MX, en-US, ru-RU). Se puede cambiar
+    /// en runtime con `setLocale()`.
+    private var currentLocale: String = "es-MX"
 
     override init() {
-        self.recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-MX"))
+        // Cargar locale persistido
+        let saved = UserDefaults.standard.string(forKey: "speechLocale") ?? "es-MX"
+        self.currentLocale = saved
+        self.recognizer = SFSpeechRecognizer(locale: Locale(identifier: saved))
         super.init()
         self.recognizer?.delegate = self
         self.onDeviceSupported = self.recognizer?.supportsOnDeviceRecognition ?? false
         if !self.onDeviceSupported {
             self.status = "On-device no soportado. Se usará servidor."
+        }
+    }
+
+    /// Cambia el locale del recognizer. Si está activo, lo reinicia.
+    func setLocale(_ locale: String) {
+        guard ["es-MX", "en-US", "ru-RU"].contains(locale) else { return }
+        guard locale != currentLocale else { return }
+        currentLocale = locale
+        UserDefaults.standard.set(locale, forKey: "speechLocale")
+
+        let wasActive = isListening
+        if wasActive {
+            stopListening()
+        }
+
+        recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale))
+        recognizer?.delegate = self
+        onDeviceSupported = recognizer?.supportsOnDeviceRecognition ?? false
+        status = "Idioma cambiado a \(displayName(locale))"
+
+        if wasActive {
+            // El caller (VoiceService) puede llamar a startListening() de nuevo
+        }
+    }
+
+    /// Nombre display del locale actual
+    var currentLocaleDisplay: String { displayName(currentLocale) }
+
+    private func displayName(_ locale: String) -> String {
+        switch locale {
+        case "es-MX": return "Español"
+        case "en-US": return "English"
+        case "ru-RU": return "Русский"
+        default: return locale
         }
     }
 
