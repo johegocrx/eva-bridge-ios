@@ -442,6 +442,40 @@ final class VoiceService: ObservableObject {
         }
     }
 
+    // MARK: - Textos de feedback en el idioma del ASR
+
+    private func stopConfirmText() -> String {
+        switch speechLocale {
+        case "en-US": return "Stopped. Say \"oye Yoe\" to resume."
+        case "ru-RU": return "Остановлено. Скажите \"ойе Ё\" для возобновления."
+        default: return "Cancelado. Decí \"oye Yoe\" para volver."
+        }
+    }
+
+    private func stoppedInfoText() -> String {
+        switch speechLocale {
+        case "en-US": return "⏸️ Stopped. Say \"oye Yoe\" or \"start\" to resume."
+        case "ru-RU": return "⏸️ Остановлено. Скажите \"ойе Ё\" или \"начать\" для возобновления."
+        default: return "⏸️ Detenido. Decí \"oye Yoe\" o \"empezar\" para reiniciar."
+        }
+    }
+
+    private func pickNumberInfoText() -> String {
+        switch speechLocale {
+        case "en-US": return "Say the number of the option (1 to \(lastMatches.count)), or \"cancel\"."
+        case "ru-RU": return "Скажите номер варианта (от 1 до \(lastMatches.count)), или \"отмена\"."
+        default: return "Decí el número de la opción (1 a \(lastMatches.count)), o \"cancelar\"."
+        }
+    }
+
+    private func cancelText() -> String {
+        switch speechLocale {
+        case "en-US": return "Cancelled."
+        case "ru-RU": return "Отменено."
+        default: return "Cancelado."
+        }
+    }
+
     /// Texto del infoMessage cuando no hay match (en el idioma del ASR)
     private func noMatchInfoText() -> String {
         switch speechLocale {
