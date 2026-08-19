@@ -33,3 +33,7 @@ Package.resolved
 # Python (for build scripts if any)
 __pycache__/
 *.pyc
+
+# Translation logs (locales)
+Tools/translate_log.txt
+
