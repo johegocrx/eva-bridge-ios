@@ -259,6 +259,11 @@ final class VoiceService: ObservableObject {
         if processing { return }
         processing = true
 
+        // Si el TTS está hablando (las opciones), interrumpirlo
+        if tts.isSpeaking {
+            tts.stop()
+        }
+
         if WakeWordDetector.isCancelCommand(trimmed) {
             cancelConfirmation()
             return
@@ -332,16 +337,15 @@ final class VoiceService: ObservableObject {
 
         let best = results.first!
 
-        // MODO SEGURO: si está activado y la confidence del mejor match es baja,
-        // NO ejecutar. En su lugar, mostrar candidatos y pedir confirmación.
-        if safeMode && best.confidence < safeModeThreshold {
+        // LÓGICA INTELIGENTE: solo entrar en modo seguro si hay ambigüedad REAL.
+        // Si el mejor match tiene confidence ALTA Y el segundo match está
+        // muy lejos, ejecutar directo (la instrucción es clara).
+        if safeMode && shouldAskForConfirmation(best: best, allResults: results) {
             pendingMatch = best
             lastMatches = Array(results.prefix(5))
             state = .awaitingConfirmation
             // CRÍTICO: resetear processing para que handleConfirmationInput
-            // pueda procesar el siguiente input del usuario. Si no, el
-            // guard `if processing { return }` en handleConfirmationInput
-            // bloquea todo.
+            // pueda procesar el siguiente input del usuario.
             processing = false
             infoMessage = "¿Quisiste decir: \"\(best.command.es)\"? Decí el número de la opción (1 a \(lastMatches.count))."
             speakConfirmationPrompt(options: Array(results.prefix(5)))
@@ -350,6 +354,32 @@ final class VoiceService: ObservableObject {
 
         // Confidence alta o modo seguro desactivado → ejecutar
         executeMatch(best, allResults: results)
+    }
+
+    /// Determina si vale la pena pedir confirmación.
+    /// - NO pide confirmación si el mejor match tiene confidence >= safeModeThreshold
+    /// - Pide confirmación si el score es bajo
+    /// - NO pide confirmación si hay UN SOLO match con score alto (instrucción clara)
+    /// - Pide confirmación si hay 2+ matches con scores similares (ambigüedad)
+    private func shouldAskForConfirmation(best: CatalogMatch, allResults: [CatalogMatch]) -> Bool {
+        // Match claro: confidence alta
+        if best.confidence >= safeModeThreshold {
+            return false
+        }
+        // Solo hay UN match y su score es razonable (>0.4): instrucción clara
+        if allResults.count == 1 && best.confidence >= 0.4 {
+            return false
+        }
+        // Hay 2+ matches: verificar si el primero está MUY adelante del segundo
+        if allResults.count >= 2 {
+            let second = allResults[1]
+            // Si el score del primero es 3x el del segundo, es claro
+            if best.score >= second.score * 3 && best.confidence >= 0.3 {
+                return false
+            }
+        }
+        // En cualquier otro caso, pedir confirmación
+        return true
     }
 
     /// Ejecuta un match confirmado. Habla el wake word + el comando a EVA y

@@ -145,12 +145,12 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
-        // Asegurar que la sesión de audio permite reproducción
+        // NO cambiar la categoría del audio session: el SpeechManager ya
+        // configuró .playAndRecord. Si cambiamos a .playback aquí, el
+        // micrófono se desactiva y el ASR no puede capturar el input del
+        // usuario. Solo activamos la sesión.
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .voicePrompt,
-                                    options: [.duckOthers, .mixWithOthers])
-            try session.setActive(true, options: [])
+            try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
             // Continuar de todas formas
         }
