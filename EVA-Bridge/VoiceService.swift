@@ -98,6 +98,15 @@ final class VoiceService: ObservableObject {
             defaults.set(0.7, forKey: "safeModeThreshold")
         }
         self.safeModeThreshold = defaults.double(forKey: "safeModeThreshold")
+
+        // CRÍTICO: cuando arranca el TTS, pausar el recognizer para evitar
+        // que se rompa el audioEngine. Cuando termina, re-arrancar.
+        tts.onWillSpeak = { [weak self] in
+            self?.speech.stopListening()
+        }
+        tts.onDidFinishSpeaking = { [weak self] in
+            self?.speech.startListening()
+        }
         // Callbacks del speech manager
         self.speech.onPartialResult = { [weak self] text in
             self?.handlePartial(text)

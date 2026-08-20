@@ -26,6 +26,13 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
     private var ruVoice: AVSpeechSynthesisVoice?
     private var pendingCallback: (() -> Void)?
 
+    /// Callback que se llama JUSTO ANTES de empezar a hablar.
+    /// Usado por VoiceService para pausar el recognizer.
+    var onWillSpeak: (() -> Void)?
+    /// Callback que se llama JUSTO DESPUES de terminar de hablar.
+    /// Usado por VoiceService para re-armar el recognizer.
+    var onDidFinishSpeaking: (() -> Void)?
+
     override init() {
         super.init()
         synthesizer.delegate = self
@@ -155,6 +162,8 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
             // Continuar de todas formas
         }
         isSpeaking = true
+        // Notificar al caller que vamos a hablar (para pausar recognizer)
+        onWillSpeak?()
         let utter = AVSpeechUtterance(string: text)
         utter.voice = v
         utter.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95
@@ -193,6 +202,8 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
             let cb = self.pendingCallback
             self.pendingCallback = nil
             self.isSpeaking = false
+            // Notificar al caller que terminamos de hablar (para re-armar recognizer)
+            self.onDidFinishSpeaking?()
             cb?()
         }
     }
@@ -201,6 +212,8 @@ final class TTSManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate 
         Task { @MainActor in
             self.isSpeaking = false
             self.pendingCallback = nil
+            // También notificar si se canceló (porque el user habló)
+            self.onDidFinishSpeaking?()
         }
     }
 }
