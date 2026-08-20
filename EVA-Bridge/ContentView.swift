@@ -138,6 +138,7 @@ struct ContentView: View {
     /// pantalla sin scroll.
     private func overlayOptionRow(number: Int, match: CatalogMatch) -> some View {
         Button {
+            NSLog("[EVA] CLICK overlayOptionRow number=%d command='%@' zh='%@' state=%@", number, match.command.es, match.command.zh, voice.state.rawValue)
             voice.confirmMatch(match)
         } label: {
             HStack(spacing: 10) {

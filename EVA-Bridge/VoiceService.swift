@@ -198,6 +198,7 @@ final class VoiceService: ObservableObject {
         // los clicks: el guard de confirmMatch falla porque state ya no
         // es .awaitingConfirmation.
         if state == .awaitingConfirmation {
+            NSLog("[EVA] handlePartial awaitingConfirmation text='%@'", text)
             lastTranscript = text
             lastPartialText = text
             // Reset debounce timer: si el user deja de hablar, procesar
@@ -208,8 +209,12 @@ final class VoiceService: ObservableObject {
                 debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { [weak self] _ in
                     guard let self = self else { return }
                     Task { @MainActor in
-                        guard self.state == .awaitingConfirmation, !self.processing else { return }
+                        guard self.state == .awaitingConfirmation, !self.processing else {
+                            NSLog("[EVA] debounce-timer skipped: state=%@ processing=%d", self?.state.rawValue ?? "nil", self?.processing ?? false ? 1 : 0)
+                            return
+                        }
                         let t = self.lastPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        NSLog("[EVA] debounce-timer firing handleConfirmationInput('%@')", t)
                         if !t.isEmpty {
                             self.handleConfirmationInput(t)
                         }
@@ -258,6 +263,7 @@ final class VoiceService: ObservableObject {
         // (handleFinal + debounce timer podrían llamar handleConfirmationInput
         // dos veces con el mismo texto).
         if state == .awaitingConfirmation {
+            NSLog("[EVA] handleFinal awaitingConfirmation text='%@'", text)
             debounceTimer?.invalidate()
             debounceTimer = nil
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -291,6 +297,7 @@ final class VoiceService: ObservableObject {
     /// 3) Cualquier otra cosa → pide que diga un número
     func handleConfirmationInput(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        NSLog("[EVA] handleConfirmationInput text='%@' state=%@ processing=%d", trimmed, state.rawValue, processing ? 1 : 0)
         guard !trimmed.isEmpty else { return }
         if processing { return }
         processing = true
@@ -301,14 +308,18 @@ final class VoiceService: ObservableObject {
         }
 
         if WakeWordDetector.isCancelCommand(trimmed) {
+            NSLog("[EVA] handleConfirmationInput -> cancelCommand")
             cancelConfirmation()
             return
         }
         if let num = WakeWordDetector.extractOptionNumber(trimmed),
            num >= 1, num <= lastMatches.count {
-            confirmMatch(lastMatches[num - 1])
+            let chosen = lastMatches[num - 1]
+            NSLog("[EVA] handleConfirmationInput -> number=%d, selecting lastMatches[%d]='%@' (zh='%@')", num, num - 1, chosen.command.es, chosen.command.zh)
+            confirmMatch(chosen)
             return
         }
+        NSLog("[EVA] handleConfirmationInput -> no number detected, ask again")
         // Si dice otra cosa, le pedimos que diga un número.
         // CRÍTICO: NO llamar beginListeningCycle() porque eso cambia
         // state a .listening, lo que rompe el flujo de awaitingConfirmation.
@@ -422,6 +433,7 @@ final class VoiceService: ObservableObject {
     /// Ejecuta un match confirmado. Habla el wake word + el comando a EVA y
     /// vuelve a escuchar.
     private func executeMatch(_ match: CatalogMatch, allResults: [CatalogMatch]? = nil) {
+        NSLog("[EVA] executeMatch entry: command='%@' zh='%@' state=%@ wasConfirmed=%d", match.command.es, match.command.zh, state.rawValue, (allResults != nil) ? 1 : 0)
         lastMatch = match.command
         if let all = allResults {
             lastMatches = Array(all.prefix(5))
@@ -442,6 +454,7 @@ final class VoiceService: ObservableObject {
         )
 
         let cmdToRun = match.command
+        NSLog("[EVA] executeMatch speaking cmdToRun.zh='%@'", cmdToRun.zh)
         tts.speak("嗨伊娃", completion: { [weak self] in
             guard let self = self else { return }
             self.tts.speakCommand(cmdToRun, completion: { [weak self] in
@@ -455,7 +468,11 @@ final class VoiceService: ObservableObject {
     /// El usuario tocó un candidato en la lista de confirmación. Ejecuta ese
     /// match (no necesariamente el best original).
     func confirmMatch(_ match: CatalogMatch) {
-        guard state == .awaitingConfirmation else { return }
+        NSLog("[EVA] confirmMatch entry: state=%@ command='%@' zh='%@'", state.rawValue, match.command.es, match.command.zh)
+        guard state == .awaitingConfirmation else {
+            NSLog("[EVA] confirmMatch GUARD FAILED (state is not awaitingConfirmation)")
+            return
+        }
         processing = true  // evita que el ciclo de escucha dispare otro processCommand
         executeMatch(match, allResults: lastMatches)
     }
