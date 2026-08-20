@@ -188,12 +188,34 @@ final class VoiceService: ObservableObject {
             return
         }
 
-        // Si está esperando confirmación, el user está diciendo algo
-        // para elegir opción. Procesar inmediatamente.
+        // Si está esperando confirmación, SOLO actualizar el transcript
+        // y agendar el debounce timer. NO procesar el input directamente:
+        // iOS dispara partials intermedios ("d", "do", "dos") antes del
+        // final. Si procesamos "d" en handleConfirmationInput y no es
+        // número, el branch "ask again" cambia state a .listening, y el
+        // final "dos" se procesa como comando nuevo (ejecutando la mejor
+        // coincidencia en vez de la opción seleccionada). Lo mismo rompe
+        // los clicks: el guard de confirmMatch falla porque state ya no
+        // es .awaitingConfirmation.
         if state == .awaitingConfirmation {
             lastTranscript = text
             lastPartialText = text
-            handleConfirmationInput(text)
+            // Reset debounce timer: si el user deja de hablar, procesar
+            // el último texto como confirmation input.
+            debounceTimer?.invalidate()
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    Task { @MainActor in
+                        guard self.state == .awaitingConfirmation, !self.processing else { return }
+                        let t = self.lastPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !t.isEmpty {
+                            self.handleConfirmationInput(t)
+                        }
+                    }
+                }
+            }
             return
         }
 
@@ -232,7 +254,12 @@ final class VoiceService: ObservableObject {
 
         // Si está esperando confirmación, procesar el input directamente
         // (sin debounce porque es una respuesta corta: "uno", "dos", etc.)
+        // IMPORTANTE: invalidar el debounce timer para evitar double-processing
+        // (handleFinal + debounce timer podrían llamar handleConfirmationInput
+        // dos veces con el mismo texto).
         if state == .awaitingConfirmation {
+            debounceTimer?.invalidate()
+            debounceTimer = nil
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             lastTranscript = trimmed
             lastInputForHistory = trimmed
@@ -282,14 +309,23 @@ final class VoiceService: ObservableObject {
             confirmMatch(lastMatches[num - 1])
             return
         }
-        // Si dice otra cosa, le pedimos que diga un número
+        // Si dice otra cosa, le pedimos que diga un número.
+        // CRÍTICO: NO llamar beginListeningCycle() porque eso cambia
+        // state a .listening, lo que rompe el flujo de awaitingConfirmation.
+        // El siguiente input (parcial o final, voz o click) se procesaría
+        // como comando nuevo en vez de selección de opción.
+        // Solo resetear processing y re-armar el recognizer (sin cambiar state).
         if !lastMatches.isEmpty {
             infoMessage = pickNumberInfoText()
             speakEnumerationReminder(options: lastMatches)
-            // processing = false y volver a listening
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.processing = false
-                self?.beginListeningCycle()
+                guard let self = self else { return }
+                // state sigue siendo .awaitingConfirmation - esto es lo correcto
+                self.processing = false
+                // Re-armar recognizer si el TTS lo pausó
+                if !self.speech.isListening {
+                    self.speech.startListening()
+                }
             }
         }
     }
