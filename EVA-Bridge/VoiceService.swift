@@ -210,7 +210,7 @@ final class VoiceService: ObservableObject {
                     guard let self = self else { return }
                     Task { @MainActor in
                         guard self.state == .awaitingConfirmation, !self.processing else {
-                            NSLog("[EVA] debounce-timer skipped: state=%@ processing=%d", self?.state.rawValue ?? "nil", self?.processing ?? false ? 1 : 0)
+                            NSLog("[EVA] debounce-timer skipped: state=%@ processing=%d", self.state.rawValue, self.processing ? 1 : 0)
                             return
                         }
                         let t = self.lastPartialText.trimmingCharacters(in: .whitespacesAndNewlines)
