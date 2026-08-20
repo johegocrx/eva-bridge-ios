@@ -299,6 +299,16 @@ final class VoiceService: ObservableObject {
         processing = true
         debounceTimer?.invalidate()
         debounceTimer = nil
+
+        // CRÍTICO: chequear awaitingConfirmation ANTES de cambiar el state
+        // a .translating. Si lo hacemos al revés, el check de state falla
+        // y caemos al flujo normal que ejecuta el primer match.
+        if state == .awaitingConfirmation {
+            // El user está respondiendo a opciones. Procesar directamente.
+            handleConfirmationInput(text)
+            return
+        }
+
         state = .translating
         speech.stopListening()
 
@@ -311,30 +321,6 @@ final class VoiceService: ObservableObject {
             pendingMatch = nil
             processing = false
             return
-        }
-
-        // Si está esperando confirmación, el user puede:
-        // 1) Decir "cancelar" / "no" → cancelar
-        // 2) Decir un número (1-8) → seleccionar esa opción
-        // 3) Tocar una opción en la lista (vía confirmMatch)
-        if state == .awaitingConfirmation {
-            if WakeWordDetector.isCancelCommand(text) {
-                cancelConfirmation()
-                return
-            }
-            if let num = WakeWordDetector.extractOptionNumber(text), num >= 1, num <= lastMatches.count {
-                confirmMatch(lastMatches[num - 1])
-                return
-            }
-            // Si dice otra cosa que no es número ni cancel, le pedimos
-            // que elija un número
-            if !lastMatches.isEmpty {
-                infoMessage = "Decí el número de la opción que querés (1 a \(lastMatches.count)), o \"cancelar\"."
-                speakEnumerationReminder(options: lastMatches)
-                processing = false
-                beginListeningCycle()
-                return
-            }
         }
 
         // Buscar en catálogo
