@@ -157,10 +157,144 @@ final class CatalogMatcher: ObservableObject {
         }
 
         results.sort { $0.score > $1.score }
-        let top = Array(results.prefix(8))
+        let prelimTop = Array(results.prefix(12))
+        // Mejora v2.4: re-rank considerando verbo+objeto. Esto evita que
+        // "abrir ventana" termine mostrando "abrir puerto de carga" como
+        // primera opción porque comparten el verbo pero NO el objeto.
+        let top = reRankByIntent(prelimTop, query: q)
         self.matches = top
         return top
     }
+
+    /// Re-rank los top matches considerando INTENCIÓN del user (verbo + objeto).
+    ///
+    /// Problema que arregla: si el user dice "abrir ventana", el algoritmo de
+    /// scoring puede dar score alto a "abrir puerta", "abrir techo", "abrir
+    /// guantera", etc. porque todos comparten el verbo "abrir". Pero el
+    /// objeto "ventana" debería ser el discriminante.
+    ///
+    /// Estrategia:
+    /// 1. Detectar si el query tiene un verbo de acción (abrir, cerrar, etc.)
+    /// 2. Detectar si el query tiene un objeto clave (ventana, puerta, etc.)
+    /// 3. Dar bonus si el comando matchea TANTO el verbo COMO el objeto
+    /// 4. Penalizar comandos que solo matchean el verbo sin el objeto
+    private func reRankByIntent(_ results: [CatalogMatch], query: String) -> [CatalogMatch] {
+        guard !results.isEmpty else { return results }
+        let qTokens = Set(tokenize(query))
+        let hasVerb = !qTokens.intersection(actionVerbs).isEmpty
+        // Mapear cada token del query a su categoría semántica (si la tiene)
+        var queryObjects: Set<String> = []
+        for token in qTokens {
+            if let cat = objectToCategory[token] {
+                queryObjects.insert(cat)
+            }
+        }
+        // Si el query no tiene ni verbo ni objeto claro, no re-rankear
+        guard hasVerb || !queryObjects.isEmpty else { return results }
+
+        let reRanked: [CatalogMatch] = results.map { match in
+            var bonus = 0
+            let cmdLower = (match.command.es + " " + (match.command.variants?.joined(separator: " ") ?? "") + " " + (match.command.tags?.joined(separator: " ") ?? ""))
+                .lowercased()
+            let cmdTokens = Set(tokenize(cmdLower))
+
+            // (1) Bonus por match del verbo
+            if hasVerb {
+                let cmdHasVerb = !cmdTokens.intersection(actionVerbs).isEmpty
+                if cmdHasVerb {
+                    bonus += 12
+                } else {
+                    // Penalizar: el query pidió un verbo claro y el comando
+                    // no tiene ninguno. Probablemente es la categoría
+                    // equivocada.
+                    bonus -= 10
+                }
+            }
+
+            // (2) Bonus por match del objeto (vía category inferida)
+            for qObj in queryObjects {
+                if let cat = match.category, cat == qObj {
+                    // BIG bonus: el query pidió X objeto, y el comando es de X categoría
+                    bonus += 25
+                } else if cmdLower.contains(qObj) {
+                    // Bonus chico: el objeto aparece como keyword en el comando
+                    bonus += 8
+                } else {
+                    // Penalizar: el query pidió un objeto claro, el comando es de otra categoría
+                    bonus -= 15
+                }
+            }
+
+            let newScore = max(0, match.score + bonus)
+            return CatalogMatch(command: match.command, score: newScore, maxScore: match.maxScore)
+        }
+        return reRanked.sorted { $0.score > $1.score }
+    }
+
+    /// Verbos de acción que típicamente el user combina con un objeto.
+    /// Si el query tiene uno de estos, el comando ideal también debería
+    /// tener uno (en cualquier conjugación).
+    private let actionVerbs: Set<String> = [
+        // abrir
+        "abrir", "abre", "abreme", "abrirlo", "abrirla",
+        // cerrar
+        "cerrar", "cierra", "cierreme", "cerrarlo", "cerrarla",
+        // encender
+        "encender", "enciende", "enciendeme", "encenderlo", "encenderla",
+        // apagar
+        "apagar", "apaga", "apagame", "apagarlo", "apagarla",
+        // prender
+        "prender", "prende", "prendeme", "prenderlo", "prenderla",
+        // subir
+        "subir", "sube", "subeme", "subirlo", "subirla",
+        // bajar
+        "bajar", "baja", "bajame", "bajarlo", "bajarla",
+        // bloquear
+        "bloquear", "bloquea", "bloquearlo", "bloquearla",
+        // desbloquear
+        "desbloquear", "desbloquea", "desbloquearlo", "desbloquearla",
+        // activar / desactivar
+        "activar", "activa", "desactivar", "desactiva",
+        // poner / quitar
+        "poner", "pon", "quitar", "quita",
+        // imperativos coloquiales
+        "abreme", "cierra", "enciende", "apaga", "sube", "baja", "prende",
+    ]
+
+    /// Mapea cada palabra-objeto del query a la categoría semántica que
+    /// debería tener el comando correcto. Si el user dice "ventana", el
+    /// comando ideal es uno de categoría "ventana".
+    private let objectToCategory: [String: String] = [
+        // ventana
+        "ventana": "ventana", "ventanilla": "ventana", "cristal": "ventana",
+        "ventanas": "ventana", "cristales": "ventana",
+        // puerta
+        "puerta": "puerta", "portezuela": "puerta", "puertas": "puerta",
+        // cajuela / maletero
+        "cajuela": "cajuela", "maletero": "cajuela", "baul": "cajuela",
+        "porton": "cajuela", "cofre": "cajuela",
+        // techo
+        "techo": "techo", "sunroof": "techo", "cortinazo": "techo",
+        // luz
+        "luz": "luz", "luces": "luz", "faro": "luz", "lampara": "luz",
+        "luz": "luz",
+        // música / audio
+        "musica": "musica", "cancion": "musica", "audio": "musica",
+        "radio": "musica", "volumen": "musica", "sonido": "musica",
+        "spotify": "musica", "altavoz": "musica",
+        // clima
+        "clima": "clima", "aire": "clima", "temperatura": "clima",
+        "calefaccion": "clima", "ventilador": "clima", "ac": "clima",
+        // asiento
+        "asiento": "asiento", "silla": "asiento", "asientos": "asiento",
+        // espejo
+        "espejo": "espejo", "espejos": "espejo",
+        // guantera
+        "guantera": "guantera",
+        // apps específicas (separadas de la categoría genérica "app")
+        "spotify": "musica", "waze": "navegacion", "youtube": "app",
+        "netflix": "app", "bilibili": "app", "iqiyi": "app",
+    ]
 
     /// Busca comandos cuya categoría (inferida del texto+tags) coincida con
     /// alguna de las keywords provistas. Usado por la mejora #2 cuando el
