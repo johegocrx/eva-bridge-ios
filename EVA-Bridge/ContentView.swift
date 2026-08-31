@@ -15,6 +15,10 @@ struct ContentView: View {
     @State private var textInput: String = ""
     @State private var didStart = false
     @State private var showHistory: Bool = false
+    /// Primer launch: el user todavía no eligió idioma. Lo mostramos
+    /// como overlay full-screen antes de empezar a escuchar.
+    @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
+    @State private var showFirstLaunchPicker: Bool = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -24,9 +28,124 @@ struct ContentView: View {
         .task {
             if !didStart {
                 didStart = true
-                await voice.start()
+                // Primer launch: mostrar el selector de idioma ANTES de empezar
+                // a escuchar. El user debe elegir en qué idioma va a hablar.
+                if !hasSelectedLanguage {
+                    showFirstLaunchPicker = true
+                } else {
+                    await voice.start()
+                }
             }
         }
+        .overlay {
+            if showFirstLaunchPicker {
+                firstLaunchLanguagePicker
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+    }
+
+    // MARK: - First-launch language picker
+
+    /// Pantalla de bienvenida la primera vez que abrís la app.
+    /// Pide que elijas el idioma en el que vas a hablar.
+    /// (EVA siempre recibe los comandos en chino — eso no cambia.)
+    private var firstLaunchLanguagePicker: some View {
+        ZStack {
+            // Fondo: gradiente Zeekr
+            LinearGradient(
+                colors: [
+                    Color(red: 0.02, green: 0.08, blue: 0.20),
+                    Color(red: 0.05, green: 0.15, blue: 0.35)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Spacer()
+                // Icono Zeekr (rayo)
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 80))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.cyan, Color.white],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .cyan.opacity(0.6), radius: 20)
+
+                VStack(spacing: 6) {
+                    Text("EVA Copilot")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("Para Zeekr")
+                        .font(.subheadline)
+                        .foregroundColor(.cyan)
+                }
+
+                VStack(spacing: 10) {
+                    Text("Elegí tu idioma")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+                    Text("El que vas a usar para hablar.\nEVA siempre escucha en chino.")
+                        .font(.callout)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+                .padding(.top, 12)
+
+                // Botones de idioma (es/en/ru)
+                VStack(spacing: 12) {
+                    languageButton(flag: "🇲🇽", name: "Español", locale: "es-MX")
+                    languageButton(flag: "🇺🇸", name: "English", locale: "en-US")
+                    languageButton(flag: "🇷🇺", name: "Русский", locale: "ru-RU")
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 16)
+
+                Spacer()
+                Text("Podés cambiarlo después desde el menú 🌐")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.bottom, 20)
+            }
+        }
+    }
+
+    /// Botón grande de selección de idioma en el picker de primer launch.
+    private func languageButton(flag: String, name: String, locale: String) -> some View {
+        Button {
+            // Persistir selección y arrancar la app
+            voice.speechLocale = locale
+            hasSelectedLanguage = true
+            showFirstLaunchPicker = false
+            Task { await voice.start() }
+        } label: {
+            HStack(spacing: 14) {
+                Text(flag)
+                    .font(.system(size: 32))
+                Text(name)
+                    .font(.title3.bold())
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.cyan)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.cyan.opacity(0.4), lineWidth: 1.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var mainContent: some View {
