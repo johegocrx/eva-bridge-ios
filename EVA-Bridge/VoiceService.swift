@@ -312,7 +312,7 @@ final class VoiceService: ObservableObject {
             cancelConfirmation()
             return
         }
-        if let num = WakeWordDetector.extractOptionNumber(trimmed),
+        if let num = WakeWordDetector.extractOptionNumber(trimmed, locale: speechLocale),
            num >= 1, num <= lastMatches.count {
             let chosen = lastMatches[num - 1]
             NSLog("[EVA] handleConfirmationInput -> number=%d, selecting lastMatches[%d]='%@' (zh='%@')", num, num - 1, chosen.command.es, chosen.command.zh)
