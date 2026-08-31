@@ -192,7 +192,7 @@ final class CatalogMatcher: ObservableObject {
         // Si el query no tiene ni verbo ni objeto claro, no re-rankear
         guard hasVerb || !queryObjects.isEmpty else { return results }
 
-        let reRanked: [CatalogMatch] = results.map { match in
+        let reRanked: [CatalogMatch] = results.map { match -> CatalogMatch in
             var bonus = 0
             let cmdLower = (match.command.es + " " + (match.command.variants?.joined(separator: " ") ?? "") + " " + (match.command.tags?.joined(separator: " ") ?? ""))
                 .lowercased()
@@ -204,23 +204,18 @@ final class CatalogMatcher: ObservableObject {
                 if cmdHasVerb {
                     bonus += 12
                 } else {
-                    // Penalizar: el query pidió un verbo claro y el comando
-                    // no tiene ninguno. Probablemente es la categoría
-                    // equivocada.
                     bonus -= 10
                 }
             }
 
             // (2) Bonus por match del objeto (vía category inferida)
             for qObj in queryObjects {
-                if let cat = match.category, cat == qObj {
-                    // BIG bonus: el query pidió X objeto, y el comando es de X categoría
+                let cat = match.category
+                if cat == qObj {
                     bonus += 25
                 } else if cmdLower.contains(qObj) {
-                    // Bonus chico: el objeto aparece como keyword en el comando
                     bonus += 8
                 } else {
-                    // Penalizar: el query pidió un objeto claro, el comando es de otra categoría
                     bonus -= 15
                 }
             }
@@ -277,11 +272,12 @@ final class CatalogMatcher: ObservableObject {
         "techo": "techo", "sunroof": "techo", "cortinazo": "techo",
         // luz
         "luz": "luz", "luces": "luz", "faro": "luz", "lampara": "luz",
-        "luz": "luz",
         // música / audio
         "musica": "musica", "cancion": "musica", "audio": "musica",
         "radio": "musica", "volumen": "musica", "sonido": "musica",
-        "spotify": "musica", "altavoz": "musica",
+        "altavoz": "musica",
+        // apps de música específicas
+        "spotify": "musica",
         // clima
         "clima": "clima", "aire": "clima", "temperatura": "clima",
         "calefaccion": "clima", "ventilador": "clima", "ac": "clima",
@@ -291,9 +287,9 @@ final class CatalogMatcher: ObservableObject {
         "espejo": "espejo", "espejos": "espejo",
         // guantera
         "guantera": "guantera",
-        // apps específicas (separadas de la categoría genérica "app")
-        "spotify": "musica", "waze": "navegacion", "youtube": "app",
-        "netflix": "app", "bilibili": "app", "iqiyi": "app",
+        // apps específicas
+        "waze": "navegacion", "youtube": "app", "netflix": "app",
+        "bilibili": "app", "iqiyi": "app",
     ]
 
     /// Busca comandos cuya categoría (inferida del texto+tags) coincida con
