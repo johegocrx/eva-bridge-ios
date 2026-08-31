@@ -192,25 +192,42 @@ final class CatalogMatcher: ObservableObject {
         // Si el query no tiene ni verbo ni objeto claro, no re-rankear
         guard hasVerb || !queryObjects.isEmpty else { return results }
 
-        let reRanked: [CatalogMatch] = results.map { match -> CatalogMatch in
-            var bonus = 0
-            let cmdLower = (match.command.es + " " + (match.command.variants?.joined(separator: " ") ?? "") + " " + (match.command.tags?.joined(separator: " ") ?? ""))
-                .lowercased()
-            let cmdTokens = Set(tokenize(cmdLower))
+        // Extraemos la lógica del scoring a una función aparte para que
+        // el compilador Swift no sufra con la inferencia de tipos en la
+        // closure del .map. (El error "unable to type-check" ocurre
+        // cuando una closure tiene demasiada lógica compleja).
+        let scored: [(CatalogMatch, Int)] = results.map { match in
+            let bonus = computeIntentBonus(match: match, hasVerb: hasVerb, queryObjects: queryObjects)
+            return (match, bonus)
+        }
+        let reRanked: [CatalogMatch] = scored.map { (match, bonus) in
+            let newScore = max(0, match.score + bonus)
+            return CatalogMatch(command: match.command, score: newScore, maxScore: match.maxScore)
+        }
+        return reRanked.sorted { $0.score > $1.score }
+    }
 
-            // (1) Bonus por match del verbo
-            if hasVerb {
-                let cmdHasVerb = !cmdTokens.intersection(actionVerbs).isEmpty
-                if cmdHasVerb {
-                    bonus += 12
-                } else {
-                    bonus -= 10
-                }
+    /// Calcula el bonus de intención para un match individual.
+    /// Separado del reRankByIntent para evitar el error de type-check del compilador.
+    private func computeIntentBonus(match: CatalogMatch, hasVerb: Bool, queryObjects: Set<String>) -> Int {
+        var bonus = 0
+        let cmdLower = buildCommandTextLower(match)
+        let cmdTokens = Set(tokenize(cmdLower))
+
+        // (1) Bonus por match del verbo
+        if hasVerb {
+            let cmdHasVerb = !cmdTokens.intersection(actionVerbs).isEmpty
+            if cmdHasVerb {
+                bonus += 12
+            } else {
+                bonus -= 10
             }
+        }
 
-            // (2) Bonus por match del objeto (vía category inferida)
+        // (2) Bonus por match del objeto (vía category inferida)
+        if !queryObjects.isEmpty {
+            let cat = match.category
             for qObj in queryObjects {
-                let cat = match.category
                 if cat == qObj {
                     bonus += 25
                 } else if cmdLower.contains(qObj) {
@@ -219,11 +236,17 @@ final class CatalogMatcher: ObservableObject {
                     bonus -= 15
                 }
             }
-
-            let newScore = max(0, match.score + bonus)
-            return CatalogMatch(command: match.command, score: newScore, maxScore: match.maxScore)
         }
-        return reRanked.sorted { $0.score > $1.score }
+
+        return bonus
+    }
+
+    /// Construye el texto en minúsculas del comando (incluyendo variants y tags).
+    private func buildCommandTextLower(_ match: CatalogMatch) -> String {
+        let es = match.command.es
+        let variants = match.command.variants?.joined(separator: " ") ?? ""
+        let tags = match.command.tags?.joined(separator: " ") ?? ""
+        return (es + " " + variants + " " + tags).lowercased()
     }
 
     /// Verbos de acción que típicamente el user combina con un objeto.
