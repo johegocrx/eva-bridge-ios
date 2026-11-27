@@ -67,6 +67,8 @@ final class VoiceService: ObservableObject {
 
     /// Último host del puente verificado (persistido en UserDefaults)
     @Published var lastWorkingHost: String = "192.168.100.189"
+    /// Estado de conexión con el puente HTTP del auto
+    @Published var bridgeConnected: Bool = false
 
     private let speech: SpeechManager
     private let tts: TTSManager
@@ -464,6 +466,8 @@ final class VoiceService: ObservableObject {
             if !success {
                 // Fallback a TTS acústico si el puente falla
                 NSLog("[EVA] Puente no disponible, fallback a TTS acústico")
+                self.bridgeConnected = false
+                self.infoMessage = "⚠️ Puente no respondió (\(self.lastWorkingHost)). Usando voz."
                 self.tts.speak("嗨伊娃", completion: { [weak self] in
                     guard let self = self else { return }
                     self.tts.speakCommand(cmdToRun, completion: { [weak self] in
@@ -473,6 +477,8 @@ final class VoiceService: ObservableObject {
                     })
                 })
             } else {
+                self.bridgeConnected = true
+                self.infoMessage = "✓ Directo a Zeekr: \(cmdToRun.zh)"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                     self?.beginListeningCycle()
                 }

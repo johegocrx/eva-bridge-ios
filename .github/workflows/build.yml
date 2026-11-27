@@ -81,29 +81,29 @@ jobs:
           os.makedirs(payload)
           target = os.path.join(payload, "EVA-Bridge.app")
           shutil.copytree(app_path, target)
-          with zipfile.ZipFile("EVA-Bridge-v2.5.1.ipa", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+          with zipfile.ZipFile("EVA-Bridge-v2.5.2.ipa", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
               for root, dirs, files in os.walk(payload):
                   for f in files:
                       full = os.path.join(root, f)
                       rel = os.path.relpath(full, workspace).replace(os.sep, "/")
                       zf.write(full, rel)
-          shutil.copy("EVA-Bridge-v2.5.1.ipa", "EVA-Bridge.ipa")
-          size = os.path.getsize("EVA-Bridge-v2.5.1.ipa")
+          shutil.copy("EVA-Bridge-v2.5.2.ipa", "EVA-Bridge.ipa")
+          size = os.path.getsize("EVA-Bridge-v2.5.2.ipa")
           print(f"IPA built: {size} bytes")
-          with open("EVA-Bridge-v2.5.1.ipa", "rb") as f:
+          with open("EVA-Bridge-v2.5.2.ipa", "rb") as f:
               head = f.read(4)
           if head[:2] != b"PK":
               raise SystemExit("Invalid magic bytes")
           print("Magic OK")
           shutil.rmtree(workspace)
           PY
-          ls -la EVA-Bridge-v2.5.1.ipa
+          ls -la EVA-Bridge-v2.5.2.ipa
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EVA-Bridge-v2.5.1
-          path: EVA-Bridge-v2.5.1.ipa
+          name: EVA-Bridge-v2.5.2
+          path: EVA-Bridge-v2.5.2.ipa
           if-no-files-found: error
           retention-days: 30
 
@@ -111,10 +111,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.5.1
-          name: EVA Copilot v2.5.1
+          tag_name: v2.5.2
+          name: EVA Copilot v2.5.2
           files: |
-            EVA-Bridge-v2.5.1.ipa
+            EVA-Bridge-v2.5.2.ipa
             EVA-Bridge.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.5.1</string>
+    <string>2.5.2</string>
     <key>CFBundleVersion</key>
-    <string>30</string>
+    <string>31</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSSpeechRecognitionUsageDescription</key>
@@ -42,6 +42,12 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Eva Copilot necesita comunicarse con tu auto Zeekr a través de la red local.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_http._tcp</string>
+    </array>
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>

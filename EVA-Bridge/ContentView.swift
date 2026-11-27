@@ -434,10 +434,10 @@ struct ContentView: View {
                     Text(voice.lastWorkingHost)
                         .font(.caption2.bold())
                 }
-                .foregroundColor(.green)
+                .foregroundColor(voice.bridgeConnected ? .green : .yellow)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(Color.green.opacity(0.15))
+                .background((voice.bridgeConnected ? Color.green : Color.yellow).opacity(0.15))
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
