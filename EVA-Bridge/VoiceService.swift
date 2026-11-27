@@ -454,15 +454,85 @@ final class VoiceService: ObservableObject {
         )
 
         let cmdToRun = match.command
-        NSLog("[EVA] executeMatch speaking cmdToRun.zh='%@'", cmdToRun.zh)
-        tts.speak("嗨伊娃", completion: { [weak self] in
+        NSLog("[EVA] executeMatch sending cmdToRun.zh='%@' to bridge", cmdToRun.zh)
+        sendToBridge(cmdToRun) { [weak self] success in
             guard let self = self else { return }
-            self.tts.speakCommand(cmdToRun, completion: { [weak self] in
+            if !success {
+                // Fallback a TTS acústico si el puente falla
+                NSLog("[EVA] Puente no disponible, fallback a TTS acústico")
+                self.tts.speak("嗨伊娃", completion: { [weak self] in
+                    guard let self = self else { return }
+                    self.tts.speakCommand(cmdToRun, completion: { [weak self] in
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                            self?.beginListeningCycle()
+                        }
+                    })
+                })
+            } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                     self?.beginListeningCycle()
                 }
-            })
-        })
+            }
+        }
+    }
+
+    private var lastWorkingHost: String? = nil
+
+    /// Envía el comando directamente al puente HTTP del head unit vía readText.
+    /// Si falla la conexión, devuelve false para permitir fallback a TTS acústico.
+    private func sendToBridge(_ cmd: EvaCommand, completion: @escaping (Bool) -> Void) {
+        guard let encodedText = cmd.zh.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            completion(false)
+            return
+        }
+        let customHost = UserDefaults.standard.string(forKey: "bridgeHost")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var hosts: [String] = []
+        if let custom = customHost, !custom.isEmpty {
+            hosts = [custom]
+        } else {
+            if let last = lastWorkingHost {
+                hosts.append(last)
+            }
+            // zeekr-car.local funciona vía mDNS tanto en el WiFi de casa como en el hotspot
+            for candidate in ["zeekr-car.local", "192.168.5.250", "192.168.8.106"] {
+                if !hosts.contains(candidate) {
+                    hosts.append(candidate)
+                }
+            }
+        }
+        sendToHosts(hosts, index: 0, encodedText: encodedText, completion: completion)
+    }
+
+    private func sendToHosts(_ hosts: [String], index: Int, encodedText: String, completion: @escaping (Bool) -> Void) {
+        guard index < hosts.count else {
+            completion(false)
+            return
+        }
+        let host = hosts[index]
+        guard let url = URL(string: "http://\(host):8792/vr?text=\(encodedText)") else {
+            sendToHosts(hosts, index: index + 1, encodedText: encodedText, completion: completion)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 2.0
+
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200,
+               let data = data, let str = String(data: data, encoding: .utf8), str.hasPrefix("OK") {
+                NSLog("[EVA] sendToBridge (%@) OK: %@", host, str)
+                Task { @MainActor in
+                    self?.lastWorkingHost = host
+                    completion(true)
+                }
+            } else {
+                NSLog("[EVA] sendToBridge (%@) falló: %@", host, error?.localizedDescription ?? "HTTP error")
+                Task { @MainActor in
+                    self?.sendToHosts(hosts, index: index + 1, encodedText: encodedText, completion: completion)
+                }
+            }
+        }
+        task.resume()
     }
 
     /// El usuario tocó un candidato en la lista de confirmación. Ejecuta ese

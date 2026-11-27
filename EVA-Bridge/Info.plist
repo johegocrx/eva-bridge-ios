@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0</string>
+    <string>2.5.0</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>29</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSSpeechRecognitionUsageDescription</key>
@@ -35,6 +35,13 @@
     <array>
         <string>audio</string>
     </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>
