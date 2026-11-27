@@ -65,6 +65,9 @@ final class VoiceService: ObservableObject {
     /// Nombre display del locale actual
     var speechLocaleDisplay: String { speech.currentLocaleDisplay }
 
+    /// Último host del puente verificado (persistido en UserDefaults)
+    @Published var lastWorkingHost: String = "192.168.100.189"
+
     private let speech: SpeechManager
     private let tts: TTSManager
     private let matcher: CatalogMatcher
@@ -98,6 +101,7 @@ final class VoiceService: ObservableObject {
             defaults.set(0.7, forKey: "safeModeThreshold")
         }
         self.safeModeThreshold = defaults.double(forKey: "safeModeThreshold")
+        self.lastWorkingHost = defaults.string(forKey: "lastWorkingHost") ?? "192.168.100.189"
 
         // CRÍTICO: cuando arranca el TTS, pausar el recognizer para evitar
         // que se rompa el audioEngine. Cuando termina, re-arrancar.
@@ -476,8 +480,6 @@ final class VoiceService: ObservableObject {
         }
     }
 
-    private var lastWorkingHost: String? = nil
-
     /// Envía el comando directamente al puente HTTP del head unit vía readText.
     /// Si falla la conexión, devuelve false para permitir fallback a TTS acústico.
     private func sendToBridge(_ cmd: EvaCommand, completion: @escaping (Bool) -> Void) {
@@ -490,11 +492,9 @@ final class VoiceService: ObservableObject {
         if let custom = customHost, !custom.isEmpty {
             hosts = [custom]
         } else {
-            if let last = lastWorkingHost {
-                hosts.append(last)
-            }
-            // zeekr-car.local funciona vía mDNS tanto en el WiFi de casa como en el hotspot
-            for candidate in ["zeekr-car.local", "192.168.5.250", "192.168.8.106"] {
+            hosts.append(lastWorkingHost)
+            // Candidatos: WiFi de casa FHVSB (192.168.100.189), MiFi (192.168.8.108), Hotspot (192.168.5.218), mDNS y legacy
+            for candidate in ["192.168.100.189", "192.168.8.108", "192.168.5.218", "zeekr-car.local", "192.168.5.250", "192.168.8.106"] {
                 if !hosts.contains(candidate) {
                     hosts.append(candidate)
                 }
@@ -523,6 +523,7 @@ final class VoiceService: ObservableObject {
                 NSLog("[EVA] sendToBridge (%@) OK: %@", host, str)
                 Task { @MainActor in
                     self?.lastWorkingHost = host
+                    UserDefaults.standard.set(host, forKey: "lastWorkingHost")
                     completion(true)
                 }
             } else {

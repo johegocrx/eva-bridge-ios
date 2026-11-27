@@ -19,11 +19,28 @@ struct ContentView: View {
     /// como overlay full-screen antes de empezar a escuchar.
     @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
     @State private var showFirstLaunchPicker: Bool = false
+    @State private var showIPPrompt: Bool = false
+    @State private var bridgeIPInput: String = ""
 
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.black.ignoresSafeArea()
             mainContent
+        }
+        .alert("IP del Carro", isPresented: $showIPPrompt) {
+            TextField("Ej: 192.168.100.189", text: $bridgeIPInput)
+            Button("Guardar") {
+                let trimmed = bridgeIPInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    UserDefaults.standard.set(trimmed, forKey: "bridgeHost")
+                    voice.lastWorkingHost = trimmed
+                } else {
+                    UserDefaults.standard.removeObject(forKey: "bridgeHost")
+                }
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("Ingresa la IP del head unit en tu red actual (ej. 192.168.100.189).")
         }
         .task {
             if !didStart {
@@ -403,6 +420,24 @@ struct ContentView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(Color.red.opacity(0.85))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+
+            // Botón IP del carro
+            Button {
+                bridgeIPInput = UserDefaults.standard.string(forKey: "bridgeHost") ?? voice.lastWorkingHost
+                showIPPrompt = true
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "car.fill")
+                    Text(voice.lastWorkingHost)
+                        .font(.caption2.bold())
+                }
+                .foregroundColor(.green)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.green.opacity(0.15))
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
