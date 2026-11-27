@@ -5,17 +5,20 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 15.4
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -23,7 +26,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Downgrade project format (XcodeGen 2.x â†’ format 77, but Xcode 15 needs 56)
+      - name: Downgrade project format
         run: |
           PBXPROJ="EVA-Bridge.xcodeproj/project.pbxproj"
           echo "Before:"
@@ -47,7 +50,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee build.log
-        continue-on-error: true
 
       - name: Show last 80 lines of build log
         if: always()
@@ -79,27 +81,40 @@ jobs:
           os.makedirs(payload)
           target = os.path.join(payload, "EVA-Bridge.app")
           shutil.copytree(app_path, target)
-          with zipfile.ZipFile("EVA-Bridge.ipa", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+          with zipfile.ZipFile("EVA-Bridge-v2.5.0.ipa", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
               for root, dirs, files in os.walk(payload):
                   for f in files:
                       full = os.path.join(root, f)
                       rel = os.path.relpath(full, workspace).replace(os.sep, "/")
                       zf.write(full, rel)
-          size = os.path.getsize("EVA-Bridge.ipa")
+          shutil.copy("EVA-Bridge-v2.5.0.ipa", "EVA-Bridge.ipa")
+          size = os.path.getsize("EVA-Bridge-v2.5.0.ipa")
           print(f"IPA built: {size} bytes")
-          with open("EVA-Bridge.ipa", "rb") as f:
+          with open("EVA-Bridge-v2.5.0.ipa", "rb") as f:
               head = f.read(4)
           if head[:2] != b"PK":
               raise SystemExit("Invalid magic bytes")
           print("Magic OK")
           shutil.rmtree(workspace)
           PY
-          ls -la EVA-Bridge.ipa
+          ls -la EVA-Bridge-v2.5.0.ipa
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EVA-Bridge-unsigned
-          path: EVA-Bridge.ipa
+          name: EVA-Bridge-v2.5.0
+          path: EVA-Bridge-v2.5.0.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v2.5.0
+          name: EVA Copilot v2.5.0
+          files: |
+            EVA-Bridge-v2.5.0.ipa
+            EVA-Bridge.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
